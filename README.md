@@ -93,6 +93,8 @@ npx wrangler secret put R2_ACCOUNT_ID         # dashboard â†’ Workers & Pages â†
 
 No secret ever lives in the repo - `wrangler.jsonc` only contains non-sensitive vars.
 
+> **Privacy note on notifications:** upload/download notifications include the recipient's IP address, country, and user agent. If you set `NTFY_URL`, use a private topic (long random name) or a self-hosted ntfy server - on a public ntfy.sh topic anyone who guesses the name can read those details. Download events are also kept in the dashboard's per-share log and pruned with share history after `HISTORY_RETENTION_DAYS`.
+
 ### 4. Set your domain and deploy
 
 Edit `wrangler.jsonc`: paste your D1 `database_id` and set `vars.PUBLIC_ORIGIN` to your hostname. By default the Worker deploys to `itransfer.<your-subdomain>.workers.dev`; for a custom domain set `"workers_dev": false` and add a `routes` entry (example in the file). Then:
