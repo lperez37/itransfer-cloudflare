@@ -1,0 +1,68 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "itransfer",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-07-01",
+	// By default the Worker is served at https://itransfer.<your-subdomain>.workers.dev.
+	// To use your own hostname instead, set "workers_dev": false and add a route:
+	//
+	//	"routes": [
+	//		{
+	//			"pattern": "files.example.com",
+	//			"custom_domain": true
+	//		}
+	//	],
+	//
+	// Tip: to keep your instance-specific config out of git, copy this file to
+	// wrangler.local.jsonc (gitignored) and pass it through npm, e.g.
+	// `npm run deploy -- -c wrangler.local.jsonc`.
+	"workers_dev": true,
+	"assets": {
+		"directory": "./frontend/dist",
+		"binding": "ASSETS",
+		"not_found_handling": "single-page-application",
+		"run_worker_first": [
+			"/api/*",
+			"/health",
+			"/ready"
+		]
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "itransfer",
+			// Replace with the id printed by: wrangler d1 create itransfer
+			"database_id": "00000000-0000-0000-0000-000000000000"
+		}
+	],
+	"r2_buckets": [
+		{
+			"binding": "BUCKET",
+			"bucket_name": "itransfer-files"
+		}
+	],
+	// Hourly cleanup of unconfirmed orphaned shares and expired password attempts.
+	"triggers": {
+		"crons": [
+			"0 * * * *"
+		]
+	},
+	// Non-secret configuration. Secrets (SESSION_SECRET, ADMIN_EMAIL,
+	// ADMIN_PASSWORD, API_BEARER_TOKEN, NTFY_URL, R2_ACCESS_KEY_ID,
+	// R2_SECRET_ACCESS_KEY, R2_ACCOUNT_ID) are set with `wrangler secret put`
+	// - see README.md.
+	"vars": {
+		// The public URL of your deployment - used to build share links.
+		"PUBLIC_ORIGIN": "https://itransfer.example.com",
+		"R2_BUCKET_NAME": "itransfer-files",
+		"DEFAULT_EXPIRY_DAYS": "365",
+		// How long an admin login session stays valid.
+		"SESSION_MAX_AGE_DAYS": "90",
+		// Deleted/expired rows are kept as dashboard history for this many
+		// days, then purged by the hourly cron. 0 keeps history forever.
+		"HISTORY_RETENTION_DAYS": "30"
+	},
+	"observability": {
+		"enabled": true
+	}
+}

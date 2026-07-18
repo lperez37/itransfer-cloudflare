@@ -1,0 +1,25 @@
+{
+  "name": "itransfer-cloudflare",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Self-hosted WeTransfer-style file sharing on Cloudflare Workers, R2 and D1",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "build:frontend": "cd frontend && npm run build",
+    "deploy": "npm run build:frontend && wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "db:migrate:local": "wrangler d1 migrations apply itransfer --local",
+    "db:migrate:remote": "wrangler d1 migrations apply itransfer --remote"
+  },
+  "dependencies": {
+    "aws4fetch": "^1.0.20",
+    "hono": "^4.6.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260714.1",
+    "typescript": "~5.7.0",
+    "wrangler": "^4.0.0"
+  }
+}

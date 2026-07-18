@@ -1,0 +1,29 @@
+# Dependencies & build output
+node_modules/
+dist/
+.wrangler/
+
+# Secrets & local environment (never commit)
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+.env
+.env.*
+
+# Per-instance deployment config (personal domains, resource ids)
+wrangler.local.jsonc
+r2-cors.local.json
+wrangler.no-r2.tmp.jsonc
+
+# Downloaded/test share artifacts
+shares/
+*.local
+
+# Local tool state / private instance notes
+CLAUDE.md
+.claude/settings.local.json
+.playwright-mcp/
+
+# OS noise
+.DS_Store
+Thumbs.db

@@ -1,0 +1,26 @@
+# Copy to .dev.vars for local development (`wrangler dev` reads it automatically).
+# In production every one of these is set with `wrangler secret put <NAME>`.
+
+# Session cookie signing key. Generate with: openssl rand -hex 32
+SESSION_SECRET=change-me
+
+# Admin login for the web UI.
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD=change-me
+
+# Bearer token for the programmatic /api/v1/ endpoints.
+# Generate with: openssl rand -hex 32. Leave empty to disable the v1 API.
+API_BEARER_TOKEN=
+
+# Optional ntfy.sh-compatible endpoint for push notifications on
+# uploads/downloads, e.g. https://ntfy.sh/your-private-topic
+NTFY_URL=
+
+# R2 S3-compatible API credentials, used to sign presigned upload/download
+# URLs so file bytes go browser <-> R2 directly (never through the Worker).
+# Create in Cloudflare Dashboard -> R2 -> Manage R2 API Tokens
+# (permission: Object Read & Write, scoped to your bucket).
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+# Your Cloudflare account id (Dashboard -> Workers & Pages -> right sidebar).
+R2_ACCOUNT_ID=
