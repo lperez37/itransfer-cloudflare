@@ -44,6 +44,8 @@ export function useUpload() {
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const completedFiles = useRef(new WeakMap<FileConfig, string>());
+  const uploadedParts = useRef(new Map<string, Array<{ part_number: number; etag: string }>>());
 
   // SEAM CONTRACT: the `progress` Map is keyed by the server `file_id`
   // (FileConfig.file_id), never the array index. All seeding/updates below use
@@ -214,13 +216,15 @@ export function useUpload() {
       multipart: { upload_id: string; parts: Array<{ part_number: number; upload_url: string }> },
       completeFn: CompleteMultipartFn
     ): Promise<void> => {
-      const completedParts: Array<{ part_number: number; etag: string }> = [];
+      const cacheKey = JSON.stringify([resourceId, fileId, multipart.upload_id]);
+      const cachedParts = uploadedParts.current.get(cacheKey);
+      const completedParts: Array<{ part_number: number; etag: string }> = cachedParts || [];
       const totalParts = multipart.parts.length;
 
-      updateProgress(fileId, { loaded: 0, total: file.size, status: "uploading" });
+      updateProgress(fileId, { loaded: cachedParts ? file.size : 0, total: file.size, status: "uploading" });
 
       // Upload parts with concurrency limit
-      const queue = [...multipart.parts];
+      const queue = cachedParts ? [] : [...multipart.parts];
       const workers: Promise<void>[] = [];
 
       // Track bytes uploaded per part (including in-flight parts) so the bar
@@ -267,14 +271,19 @@ export function useUpload() {
       }
 
       await Promise.all(workers);
+      if (abortRef.current?.signal.aborted) throw new DOMException("Upload cancelled", "AbortError");
 
       // Complete multipart
       completedParts.sort((a, b) => a.part_number - b.part_number);
+      // Keep uploaded ETags when confirmation is cancelled or completion fails.
+      // A retry of the same initialized upload only repeats its API completion.
+      uploadedParts.current.set(cacheKey, completedParts);
       await completeFn(resourceId, {
         file_id: fileId,
         upload_id: multipart.upload_id,
         parts: completedParts,
       });
+      uploadedParts.current.delete(cacheKey);
 
       updateProgress(fileId, { loaded: file.size, total: file.size, status: "done" });
     },
@@ -304,7 +313,11 @@ export function useUpload() {
 
       try {
         for (const fc of fileConfigs) {
-          if (abortRef.current.signal.aborted) break;
+          if (abortRef.current.signal.aborted) throw new DOMException("Upload cancelled", "AbortError");
+          if (completedFiles.current.get(fc) === resourceId) {
+            updateProgress(fc.file_id, { loaded: fc.file.size, total: fc.file.size, status: "done" });
+            continue;
+          }
 
           if (fc.multipart) {
             await uploadMultipartFile(
@@ -317,6 +330,7 @@ export function useUpload() {
           } else if (fc.upload_url) {
             await uploadSmallFile(fc.file_id, fc.file, fc.upload_url);
           }
+          completedFiles.current.set(fc, resourceId);
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Upload failed";
@@ -326,7 +340,7 @@ export function useUpload() {
         setIsUploading(false);
       }
     },
-    [uploadMultipartFile, uploadSmallFile]
+    [uploadMultipartFile, uploadSmallFile, updateProgress]
   );
 
   const cancel = useCallback(() => {

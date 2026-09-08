@@ -1,13 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useNavigate, useOutletContext } from "react-router-dom";
+import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import {
-  shares as sharesApi,
-  requests as requestsApi,
   parseUtcDate,
   type Share,
   type FileRequest,
 } from "../lib/api";
 import { downloadFiles } from "../lib/download";
+import { useWorkspace } from "../context/workspace";
 import {
   Upload,
   Inbox,
@@ -142,6 +141,7 @@ function CopyButton({ text }: { text: string }) {
 }
 
 export default function DashboardPage() {
+  const { client: { shares: sharesApi, requests: requestsApi }, readOnly } = useWorkspace();
   const navigate = useNavigate();
   const [tab, setTab] = useState<"shares" | "requests">("shares");
   const [shareList, setShareList] = useState<Share[]>([]);
@@ -177,13 +177,13 @@ export default function DashboardPage() {
       if (signal?.cancelled) return;
       setShareList(s);
       setRequestList(r);
-    } catch {
+    } catch (err) {
       if (signal?.cancelled) return;
-      setError("Failed to load data. Please try again.");
+      setError(err instanceof Error ? err.message : "Failed to load data. Please try again.");
     } finally {
       if (!signal?.cancelled) setLoading(false);
     }
-  }, []);
+  }, [sharesApi, requestsApi]);
 
   useEffect(() => {
     const signal = { cancelled: false };
@@ -289,12 +289,13 @@ export default function DashboardPage() {
             Dashboard
           </h1>
           <p className="text-text-muted text-sm mt-1">
-            Manage your shares and file requests
+            {readOnly ? "Browse shares and file requests in this workspace" : "Manage your shares and file requests"}
           </p>
         </div>
         <div className="grid grid-cols-2 gap-3 sm:flex">
           <button
             onClick={() => navigate("/upload")}
+            disabled={readOnly}
             className="btn-primary flex items-center justify-center gap-2 text-sm"
           >
             <Plus className="w-4 h-4" />
@@ -302,6 +303,7 @@ export default function DashboardPage() {
           </button>
           <button
             onClick={() => navigate("/requests/new")}
+            disabled={readOnly}
             className="btn-secondary flex items-center justify-center gap-2 text-sm"
           >
             <Plus className="w-4 h-4" />
@@ -368,9 +370,10 @@ export default function DashboardPage() {
 
       {/* Error */}
       {error && (
-        <div className="mb-4 flex items-center gap-2 bg-danger/10 border border-danger/20 rounded-md px-4 py-3 text-sm text-red-400 animate-fade-in">
+        <div role="alert" className="mb-4 flex flex-wrap items-center gap-2 bg-danger/10 border border-danger/20 rounded-md px-4 py-3 text-sm text-red-400 animate-fade-in">
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
           {error}
+          <button className="btn-secondary text-sm" onClick={() => load()}>Retry</button>
         </div>
       )}
 
@@ -385,10 +388,11 @@ export default function DashboardPage() {
           <EmptyState
             icon={<Upload className="w-10 h-10 text-text-muted" />}
             title="No shares yet"
-            description="Upload files to create your first share link."
+            description={readOnly ? "There are no shares in this view. Try another filter." : "Upload files to create your first share link."}
             action={
               <button
                 onClick={() => navigate("/upload")}
+                disabled={readOnly}
                 className="btn-primary flex items-center gap-2 text-sm"
               >
                 <Plus className="w-4 h-4" />
@@ -439,6 +443,8 @@ export default function DashboardPage() {
                   <div className="flex items-start flex-1 min-w-0">
                     <input
                       type="checkbox"
+                      disabled={readOnly}
+                      aria-label={`Select ${share.title || share.id}`}
                       checked={selectedShares.has(share.id)}
                       onChange={(e) => {
                         e.stopPropagation();
@@ -452,7 +458,7 @@ export default function DashboardPage() {
                     />
                     <div className="flex-1 min-w-0">
                       <h3 className="font-semibold text-text-primary truncate">
-                        {share.title || "Untitled share"}
+                        <Link to={`/shares/${share.id}`} className="hover:text-primary-light">{share.title || "Untitled share"}</Link>
                       </h3>
                       <p className="text-xs text-text-muted mt-0.5 font-mono truncate">
                         {share.id}
@@ -490,7 +496,7 @@ export default function DashboardPage() {
                   {!isLive(getShareStatus(share)) ? (
                     <button
                       onClick={() => setConfirmDelete({ type: "share-purge", id: share.id, title: share.title || "Untitled share" })}
-                      disabled={deletingIds.has(share.id)}
+                       disabled={readOnly || deletingIds.has(share.id)}
                       className="btn-secondary !px-3 !py-1.5 text-xs flex items-center gap-1.5 text-text-muted"
                     >
                       {deletingIds.has(share.id) ? (
@@ -520,7 +526,8 @@ export default function DashboardPage() {
                       )}
                       <button
                         onClick={() => setConfirmDelete({ type: "share", id: share.id, title: share.title || "Untitled share" })}
-                        disabled={deletingIds.has(share.id)}
+                        disabled={readOnly || deletingIds.has(share.id)}
+                        aria-label="Delete share"
                         className="btn-danger !px-3 !py-1.5 text-xs flex items-center gap-1.5 ml-auto"
                       >
                         {deletingIds.has(share.id) ? (
@@ -542,10 +549,11 @@ export default function DashboardPage() {
         <EmptyState
           icon={<Inbox className="w-10 h-10 text-text-muted" />}
           title="No requests yet"
-          description="Create a file request to receive uploads from others."
+          description={readOnly ? "There are no requests in this view. Try another filter." : "Create a file request to receive uploads from others."}
           action={
             <button
               onClick={() => navigate("/requests/new")}
+              disabled={readOnly}
               className="btn-primary flex items-center gap-2 text-sm"
             >
               <Plus className="w-4 h-4" />
@@ -589,6 +597,8 @@ export default function DashboardPage() {
                 <div className="flex items-start flex-1 min-w-0">
                   <input
                     type="checkbox"
+                    disabled={readOnly}
+                    aria-label={`Select ${req.title || req.id}`}
                     checked={selectedRequests.has(req.id)}
                     onChange={(e) => {
                       e.stopPropagation();
@@ -631,7 +641,7 @@ export default function DashboardPage() {
                 {!isLive(getRequestStatus(req)) ? (
                   <button
                     onClick={() => setConfirmDelete({ type: "request-purge", id: req.id, title: req.title })}
-                    disabled={deletingIds.has(req.id)}
+                    disabled={readOnly || deletingIds.has(req.id)}
                     className="btn-secondary !px-3 !py-1.5 text-xs flex items-center gap-1.5 text-text-muted"
                   >
                     {deletingIds.has(req.id) ? (
@@ -661,7 +671,8 @@ export default function DashboardPage() {
                     )}
                     <button
                       onClick={() => setConfirmDelete({ type: "request", id: req.id, title: req.title })}
-                      disabled={deletingIds.has(req.id)}
+                      disabled={readOnly || deletingIds.has(req.id)}
+                      aria-label="Delete request"
                       className="btn-danger !px-3 !py-1.5 text-xs flex items-center gap-1.5 ml-auto"
                     >
                       {deletingIds.has(req.id) ? (

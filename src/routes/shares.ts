@@ -5,7 +5,8 @@ import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import type { AppEnv } from "../types";
 import { requireSession } from "../lib/auth";
-import { getFile, getShare, getShareFiles, toFileInfo } from "../lib/db";
+import { getFile, getShareFiles, toFileInfo } from "../lib/db";
+import { getWorkspaceShare, requireWorkspace } from "../lib/workspace";
 import { presignedGet } from "../lib/r2";
 import { completeMultipartSchema, parseBody, shareInitSchema } from "../lib/schemas";
 import { isoInDays } from "../lib/util";
@@ -42,32 +43,32 @@ interface DownloadLogRow {
 
 export const shareRoutes = new Hono<AppEnv>()
   .use("*", requireSession)
+  .use("*", requireWorkspace)
   .post("/init", async (c) => {
     const body = await parseBody(c.req, shareInitSchema);
-    const result = await createShare(c.env, body, c.get("userEmail"));
+    const owner = c.get("workspaceUser");
+    const result = await createShare(c.env, body, owner.email, owner.id);
     return c.json(result);
   })
   .post("/:shareId/complete-multipart", async (c) => {
     const shareId = c.req.param("shareId");
-    if (!(await getShare(c.env.DB, shareId))) {
-      throw new HTTPException(404, { message: "Share not found" });
-    }
+    await getWorkspaceShare(c, shareId);
     const body = await parseBody(c.req, completeMultipartSchema);
     await completeFileMultipart(c.env, { shareId }, body);
     return c.json({ detail: "Multipart upload completed" });
   })
   .post("/:shareId/confirm", async (c) => {
-    const share = await getShare(c.env.DB, c.req.param("shareId"));
+    const share = await getWorkspaceShare(c, c.req.param("shareId"));
     if (!share) throw new HTTPException(404, { message: "Share not found" });
     await confirmShare(c.env, share);
     return c.json({ detail: "Share confirmed" });
   })
   .get("/", async (c) => {
-    const rows = await listShares(c.env.DB);
+    const rows = await listShares(c.env.DB, c.get("workspaceUser").id);
     return c.json(rows.map(serializeShare));
   })
   .get("/:shareId", async (c) => {
-    const share = await getShare(c.env.DB, c.req.param("shareId"));
+    const share = await getWorkspaceShare(c, c.req.param("shareId"));
     if (!share) throw new HTTPException(404, { message: "Share not found" });
     const files = await getShareFiles(c.env.DB, share.id);
     const { results: downloads } = await c.env.DB.prepare(
@@ -86,7 +87,7 @@ export const shareRoutes = new Hono<AppEnv>()
   .patch("/:shareId", async (c) => {
     // Update a live share: extend expiry (measured from now) and/or toggle
     // the paused flag (temporarily hidden from recipients, files kept).
-    const share = await getShare(c.env.DB, c.req.param("shareId"));
+    const share = await getWorkspaceShare(c, c.req.param("shareId"));
     if (!share) throw new HTTPException(404, { message: "Share not found" });
     if (!share.is_active) {
       throw new HTTPException(409, {
@@ -106,8 +107,8 @@ export const shareRoutes = new Hono<AppEnv>()
       sets.push("is_paused = ?");
       binds.push(body.is_paused ? 1 : 0);
     }
-    binds.push(share.id);
-    await c.env.DB.prepare(`UPDATE shares SET ${sets.join(", ")} WHERE id = ?`)
+    binds.push(share.id, c.get("workspaceUser").id);
+    await c.env.DB.prepare(`UPDATE shares SET ${sets.join(", ")} WHERE id = ? AND owner_user_id = ?`)
       .bind(...binds)
       .run();
 
@@ -119,7 +120,7 @@ export const shareRoutes = new Hono<AppEnv>()
   })
   .post("/:shareId/files/:fileId/download", async (c) => {
     // Admin: presigned URL for a single file of a share.
-    const share = await getShare(c.env.DB, c.req.param("shareId"));
+    const share = await getWorkspaceShare(c, c.req.param("shareId"));
     if (!share) throw new HTTPException(404, { message: "Share not found" });
     if (!share.is_active) {
       throw new HTTPException(410, { message: "Share is no longer available" });
@@ -134,20 +135,20 @@ export const shareRoutes = new Hono<AppEnv>()
     });
   })
   .delete("/:shareId", async (c) => {
-    const share = await getShare(c.env.DB, c.req.param("shareId"));
+    const share = await getWorkspaceShare(c, c.req.param("shareId"));
     if (!share) throw new HTTPException(404, { message: "Share not found" });
     await deactivateShare(c.env, share);
     return c.json({ detail: "Share deleted" });
   })
   .delete("/:shareId/purge", async (c) => {
-    const share = await getShare(c.env.DB, c.req.param("shareId"));
+    const share = await getWorkspaceShare(c, c.req.param("shareId"));
     if (!share) throw new HTTPException(404, { message: "Share not found" });
     await purgeShare(c.env, share);
     return c.json({ detail: "Share permanently deleted" });
   })
   .post("/:shareId/download", async (c) => {
     // Admin download: bypasses password, does not count as a public download.
-    const share = await getShare(c.env.DB, c.req.param("shareId"));
+    const share = await getWorkspaceShare(c, c.req.param("shareId"));
     if (!share) throw new HTTPException(404, { message: "Share not found" });
     // Deactivated shares have had their R2 objects purged, so presigned URLs
     // would 404 - reject up front rather than hand out dead links.

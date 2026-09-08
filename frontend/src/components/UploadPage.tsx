@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { shares } from "../lib/api";
+import { useWorkspace } from "../context/workspace";
 import { useUpload, type FileProgress } from "../hooks/useUpload";
 import FileDropzone from "./FileDropzone";
 import ProgressBar from "./ProgressBar";
@@ -61,6 +61,7 @@ interface ResumeState {
 }
 
 export default function UploadPage() {
+  const { client: { shares } } = useWorkspace();
   const [files, setFiles] = useState<LocalFile[]>([]);
   const [title, setTitle] = useState("");
   const [expiryDays, setExpiryDays] = useState(365);
@@ -312,7 +313,7 @@ export default function UploadPage() {
       </div>
 
       {error && (
-        <div className="mb-4 bg-danger/10 border border-danger/20 rounded-md px-4 py-3 text-sm text-red-400 animate-fade-in">
+        <div role="alert" className="mb-4 bg-danger/10 border border-danger/20 rounded-md px-4 py-3 text-sm text-red-400 animate-fade-in">
           {error}
         </div>
       )}
@@ -506,7 +507,7 @@ export default function UploadPage() {
             disabled={isUploading || files.length === 0}
             className="btn-primary flex items-center gap-2 text-base px-8 py-3"
           >
-            Create Share
+            {resume ? "Retry upload" : "Create Share"}
           </button>
         </div>
       )}

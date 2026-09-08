@@ -2,6 +2,7 @@
  * the bearer-authenticated /api/v1 routes. */
 
 import type { Context } from "hono";
+import { scheduleOptionalEmail } from "./email-preferences";
 import { HTTPException } from "hono/http-exception";
 import type { z } from "zod";
 import type { AppEnv, Env, FileRow, RequestRow, ShareRow } from "../types";
@@ -19,6 +20,7 @@ import type { FileUploadResponse } from "./uploads";
 import { prepareFileUploads } from "./uploads";
 import { formatFileSize, isExpired, isoInDays, isoMinutesAgo, utcNow } from "./util";
 import { requestMetaSuffix, sendNotification } from "./notify";
+import { recordRequestDownloadUsage } from "./usage";
 
 /** Fallback share lifetime when DEFAULT_EXPIRY_DAYS is unset or malformed. */
 const DEFAULT_EXPIRY_DAYS = 365;
@@ -92,8 +94,10 @@ function safeExpiryDays(raw: string | undefined): number {
 export async function createShare(
   env: Env,
   body: z.infer<typeof shareInitSchema>,
-  createdBy: string
+  createdBy: string,
+  ownerUserId?: string
 ): Promise<{ share_id: string; files: FileUploadResponse[] }> {
+  const owner = await resolveCreationOwner(env.DB, createdBy, ownerUserId);
   const expiresAt = isoInDays(body.expiry_days ?? safeExpiryDays(env.DEFAULT_EXPIRY_DAYS));
   const passwordHash = body.password ? await hashPassword(body.password) : null;
   const totalSize = body.files.reduce((sum, f) => sum + f.size, 0);
@@ -109,8 +113,8 @@ export async function createShare(
     (id) => [
       env.DB.prepare(
         `INSERT INTO shares (id, title, id_format, created_at, expires_at, max_downloads,
-           download_count, password_hash, is_active, total_size, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, 0, ?, 0, ?, ?)`
+           download_count, password_hash, is_active, total_size, created_by, owner_user_id)
+         VALUES (?, ?, ?, ?, ?, ?, 0, ?, 0, ?, ?, ?)`
       ).bind(
         id,
         body.title ?? null,
@@ -120,7 +124,8 @@ export async function createShare(
         body.max_downloads ?? null,
         passwordHash,
         totalSize,
-        createdBy
+        owner.email,
+        owner.id
       ),
     ]
   );
@@ -189,14 +194,15 @@ export interface ShareListRow extends ShareRow {
   file_count: number;
 }
 
-export async function listShares(db: D1Database): Promise<ShareListRow[]> {
-  const { results } = await db
+export async function listShares(db: D1Database, ownerUserId?: string): Promise<ShareListRow[]> {
+  const query = db
     .prepare(
       `SELECT s.*, COUNT(f.id) AS file_count
        FROM shares s LEFT JOIN files f ON f.share_id = s.id
+       ${ownerUserId !== undefined ? "WHERE s.owner_user_id = ?" : ""}
        GROUP BY s.id ORDER BY s.created_at DESC`
-    )
-    .all<ShareListRow>();
+    );
+  const { results } = await (ownerUserId !== undefined ? query.bind(ownerUserId) : query).all<ShareListRow>();
   return results;
 }
 
@@ -239,13 +245,15 @@ export async function buildDownloadUrls(
   env: Env,
   files: FileRow[]
 ): Promise<Array<{ filename: string; size: number | null; download_url: string }>> {
-  return Promise.all(
+  const urls = await Promise.all(
     files.map(async (f) => ({
       filename: f.original_filename,
       size: f.file_size,
       download_url: await presignedGet(env, f.r2_key, f.original_filename),
     }))
   );
+  await recordRequestDownloadUsage(env.DB, files);
+  return urls;
 }
 
 /**
@@ -275,6 +283,9 @@ export async function recordShareDownload(
     .run();
   if ((claim.meta?.changes ?? 0) !== 1) return false;
 
+  scheduleOptionalEmail(c, { kind: "share_downloads", resourceId: share.id,
+    eventId: crypto.randomUUID(), fileCount: files.length });
+
   const now = utcNow();
   const ip = c.req.header("CF-Connecting-IP") ?? null;
   const ua = (c.req.header("User-Agent") ?? "").slice(0, 512) || null;
@@ -299,11 +310,29 @@ export async function recordShareDownload(
 
 // ── Requests ─────────────────────────────────────────────────────────────────
 
+/** Bearer callers inherit the immutable bootstrap admin, never an email match.
+ * Before bootstrap their records remain unowned for the bootstrap backfill. */
+async function resolveCreationOwner(db: D1Database, createdBy: string, ownerUserId?: string): Promise<{ id: string | null; email: string }> {
+  let id: string | null = ownerUserId ?? null;
+  if (ownerUserId === undefined) {
+    const setting = await db.prepare("SELECT value FROM app_settings WHERE key = ?")
+      .bind("bootstrap_admin_id").first<{ value: string }>();
+    id = setting?.value ?? null;
+  }
+  if (id === null) return { id: null, email: createdBy };
+  const owner = await db.prepare("SELECT id, email FROM users WHERE id = ?")
+    .bind(id).first<{ id: string; email: string }>();
+  if (!owner) throw new HTTPException(409, { message: "Workspace owner is unavailable" });
+  return owner;
+}
+
 export async function createFileRequest(
   env: Env,
   body: z.infer<typeof requestCreateSchema>,
-  createdBy: string
+  createdBy: string,
+  ownerUserId?: string
 ): Promise<string> {
+  const owner = await resolveCreationOwner(env.DB, createdBy, ownerUserId);
   const expiresAt = body.expiry_days != null ? isoInDays(body.expiry_days) : null;
   const passwordHash = body.password ? await hashPassword(body.password) : null;
   const createdAt = utcNow();
@@ -318,8 +347,8 @@ export async function createFileRequest(
     (id) => [
       env.DB.prepare(
         `INSERT INTO requests (id, title, message, id_format, created_at, expires_at, max_uploads,
-           max_file_size, upload_count, allow_incremental, password_hash, is_active, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 1, ?)`
+           max_file_size, upload_count, allow_incremental, password_hash, is_active, created_by, owner_user_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 1, ?, ?)`
       ).bind(
         id,
         body.title,
@@ -331,7 +360,8 @@ export async function createFileRequest(
         body.max_file_size ?? null,
         body.allow_incremental ? 1 : 0,
         passwordHash,
-        createdBy
+        owner.email,
+        owner.id
       ),
     ]
   );
@@ -343,14 +373,15 @@ export interface RequestListRow extends RequestRow {
   file_count: number;
 }
 
-export async function listRequests(db: D1Database): Promise<RequestListRow[]> {
-  const { results } = await db
+export async function listRequests(db: D1Database, ownerUserId?: string): Promise<RequestListRow[]> {
+  const query = db
     .prepare(
       `SELECT r.*, COUNT(f.id) AS file_count
        FROM requests r LEFT JOIN files f ON f.request_id = r.id
+       ${ownerUserId !== undefined ? "WHERE r.owner_user_id = ?" : ""}
        GROUP BY r.id ORDER BY r.created_at DESC`
-    )
-    .all<RequestListRow>();
+    );
+  const { results } = await (ownerUserId !== undefined ? query.bind(ownerUserId) : query).all<RequestListRow>();
   return results;
 }
 

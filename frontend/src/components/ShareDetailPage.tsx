@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
-  shares as sharesApi,
   parseUtcDate,
   type ShareDetail,
   type DownloadLogEntry,
 } from "../lib/api";
 import { downloadFiles } from "../lib/download";
+import { useWorkspace } from "../context/workspace";
 import {
   ArrowLeft,
   CalendarPlus,
@@ -50,6 +50,7 @@ const EXTEND_OPTIONS = [
 ];
 
 export default function ShareDetailPage() {
+  const { client: { shares: sharesApi }, readOnly } = useWorkspace();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [share, setShare] = useState<ShareDetail | null>(null);
@@ -69,12 +70,12 @@ export default function ShareDetailPage() {
     setError(null);
     try {
       setShare(await sharesApi.get(id));
-    } catch {
-      setError("Failed to load share.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load share.");
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, sharesApi]);
 
   useEffect(() => {
     load();
@@ -194,7 +195,7 @@ export default function ShareDetailPage() {
             </button>
             <button
               onClick={handleTogglePause}
-              disabled={togglingPause}
+              disabled={readOnly || togglingPause}
               className="btn-secondary text-sm flex items-center gap-2"
             >
               {togglingPause ? (
@@ -208,6 +209,7 @@ export default function ShareDetailPage() {
             </button>
             <button
               onClick={() => setShowExtend(!showExtend)}
+              disabled={readOnly}
               className="btn-primary text-sm flex items-center gap-2"
             >
               <CalendarPlus className="w-4 h-4" />
@@ -215,6 +217,7 @@ export default function ShareDetailPage() {
             </button>
             <button
               onClick={() => setConfirmDelete(true)}
+              disabled={readOnly}
               aria-label="Delete share"
               className="btn-danger !px-3 text-sm flex items-center"
             >

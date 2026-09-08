@@ -33,7 +33,8 @@ export default defineConfig({
     proxy: {
       "/api": {
         target: "http://localhost:8787",
-        changeOrigin: true,
+        // Preserve the browser origin for the Worker's same-origin CSRF check.
+        changeOrigin: false,
       },
     },
   },

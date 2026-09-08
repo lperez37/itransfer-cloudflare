@@ -1,6 +1,7 @@
 /** Public, unauthenticated endpoints: share downloads and request uploads. */
 
 import { Hono } from "hono";
+import { scheduleOptionalEmail } from "../lib/email-preferences";
 import type { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { AppEnv, FileRow } from "../types";
@@ -186,7 +187,7 @@ export const publicRoutes = new Hono<AppEnv>()
 
     const allFiles = await getRequestFiles(c.env.DB, req.id);
     const byId = new Map(allFiles.map((f) => [f.id, f]));
-    const confirmed = body.file_ids.map((id) => byId.get(id));
+    const confirmed = [...new Set(body.file_ids)].map((id) => byId.get(id));
     // Reject any file_id that does not belong to this request (ownership check).
     if (confirmed.some((f) => f === undefined)) {
       throw new HTTPException(400, { message: "One or more file IDs are invalid" });
@@ -194,9 +195,9 @@ export const publicRoutes = new Hono<AppEnv>()
     const targetFiles = confirmed as FileRow[];
 
     // Verify each file landed in R2, enforce size limits against the REAL object
-    // size, and stage an idempotent flip (WHERE confirmed = 0) per file.
-    let totalSize = 0;
-    const fileUpdates: D1PreparedStatement[] = [];
+    // size. One JSON payload keeps the batch below D1's bound-variable limit
+    // without a database statement per file.
+    const fileUpdates: { id: string; size: number }[] = [];
     for (const f of targetFiles) {
       const size = await getObjectSize(c.env, f.r2_key);
       if (size === null) {
@@ -218,40 +219,59 @@ export const publicRoutes = new Hono<AppEnv>()
           message: `File '${f.original_filename}' is larger than its declared size`,
         });
       }
-      totalSize += size;
-      fileUpdates.push(
-        c.env.DB.prepare(
-          "UPDATE files SET file_size = ?, confirmed = 1 WHERE id = ? AND confirmed = 0"
-        ).bind(size, f.id)
-      );
+      fileUpdates.push({ id: f.id, size });
     }
 
-    // Flip the files; count how many actually transitioned from unconfirmed.
-    const results = await c.env.DB.batch(fileUpdates);
-    const flipped = results.reduce((n, r) => n + (r.meta?.changes ?? 0), 0);
-    // Idempotent: a repeated confirm flips nothing → no counter bump, no notify.
-    if (flipped === 0) {
+    // D1 batches are transactional and serialized. Claim only if at least one
+    // owned target still needs confirmation, rechecking live admission limits.
+    // Keep these statements adjacent: SQLite changes() sees the preceding
+    // UPDATE's direct row count (trigger writes are saved/restored), not D1's
+    // trigger-inclusive meta.changes. A denied claim therefore flips NO files.
+    const payload = JSON.stringify(fileUpdates);
+    const results = await c.env.DB.batch([
+      c.env.DB.prepare(
+        `UPDATE requests SET upload_count = upload_count + 1
+         WHERE id = ?1 AND is_active = 1
+           AND (expires_at IS NULL OR expires_at > ?3)
+           AND ((allow_incremental = 0 AND upload_count < 1)
+             OR (allow_incremental = 1 AND (max_uploads IS NULL OR upload_count < max_uploads)))
+           AND EXISTS (SELECT 1 FROM files WHERE request_id = ?1 AND confirmed = 0
+             AND id IN (SELECT json_extract(value, '$.id') FROM json_each(?2)))
+         RETURNING id, upload_count`
+      ).bind(req.id, payload, utcNow()),
+      c.env.DB.prepare(
+        `UPDATE files SET confirmed = 1,
+           file_size = (SELECT json_extract(value, '$.size') FROM json_each(?2)
+             WHERE json_extract(value, '$.id') = files.id)
+         WHERE changes() = 1 AND request_id = ?1 AND confirmed = 0
+           AND id IN (SELECT json_extract(value, '$.id') FROM json_each(?2))
+         RETURNING id, file_size`
+      ).bind(req.id, payload),
+    ]);
+    const claimed = results[0]!.results[0] as { id: string; upload_count: number } | undefined;
+    if (!claimed) {
+      // Distinguish a concurrent/repeated accepted batch from rejected new work.
+      const pending = await c.env.DB.prepare(
+        `SELECT 1 FROM files WHERE request_id = ?1 AND confirmed = 0
+         AND id IN (SELECT json_extract(value, '$.id') FROM json_each(?2)) LIMIT 1`
+      ).bind(req.id, payload).first();
+      if (pending) {
+        throw new HTTPException(410, { message: "Upload limit reached" });
+      }
       return c.json({ detail: "Upload already confirmed" });
     }
 
-    // Atomically claim an upload slot, honouring allow_incremental / max_uploads.
-    // cap = the effective ceiling: 1 for one-shot requests, max_uploads (or
-    // unlimited when null) for incremental ones.
-    const cap = req.allow_incremental ? req.max_uploads : 1;
-    const inc = await c.env.DB.prepare(
-      `UPDATE requests SET upload_count = upload_count + 1
-       WHERE id = ?1 AND is_active = 1 AND (?2 IS NULL OR upload_count < ?2)`
-    )
-      .bind(req.id, cap)
-      .run();
-    if ((inc.meta?.changes ?? 0) !== 1) {
-      throw new HTTPException(410, { message: "Upload limit reached" });
-    }
+    // RETURNING excludes cost-trigger writes and already-confirmed targets.
+    const flipped = results[1]!.results as { id: string; file_size: number }[];
+    const flippedIds = flipped.map((f) => f.id).sort();
+    const totalSize = flipped.reduce((sum, f) => sum + f.file_size, 0);
+    scheduleOptionalEmail(c, { kind: "request_uploads", resourceId: req.id,
+      eventId: JSON.stringify(flippedIds), fileCount: flippedIds.length });
 
-    const newCount = req.upload_count + 1;
+    const newCount = claimed.upload_count;
     let notification =
       `Request: ${req.title}\n` +
-      `Files: ${targetFiles.length} (${formatFileSize(totalSize)})\n` +
+      `Files: ${flippedIds.length} (${formatFileSize(totalSize)})\n` +
       `Uploads: ${newCount}`;
     if (req.max_uploads) notification += `/${req.max_uploads}`;
     if (body.message) notification += `\nMessage: ${body.message}`;

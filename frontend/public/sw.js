@@ -32,6 +32,7 @@ self.addEventListener("fetch", (event) => {
   if (
     request.method !== "GET" ||
     request.url.includes("/api/") ||
+    new URL(request.url).pathname.replace(/\/$/, "") === "/set-password" ||
     request.url.startsWith("chrome-extension://")
   ) {
     return;

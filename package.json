@@ -4,11 +4,20 @@
   "private": true,
   "description": "Self-hosted WeTransfer-style file sharing on Cloudflare Workers, R2 and D1",
   "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "overrides": {
+    "undici": "7.29.0"
+  },
   "scripts": {
     "dev": "wrangler dev",
     "build:frontend": "cd frontend && npm run build",
     "deploy": "npm run build:frontend && wrangler deploy",
     "typecheck": "tsc --noEmit",
+    "test": "node --test --test-concurrency=1 tests/*.test.mjs",
+    "test:ui": "node tests/ui-multiuser.mjs",
+    "mail:configure": "node scripts/configure-mail.mjs",
     "db:migrate:local": "wrangler d1 migrations apply itransfer --local",
     "db:migrate:remote": "wrangler d1 migrations apply itransfer --remote"
   },
@@ -19,7 +28,10 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260714.1",
+    "@playwright/test": "1.63.0",
+    "esbuild": "0.28.1",
+    "miniflare": "4.20260730.0",
     "typescript": "~5.7.0",
-    "wrangler": "^4.0.0"
+    "wrangler": "4.116.0"
   }
 }

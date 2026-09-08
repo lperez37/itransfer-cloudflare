@@ -4,6 +4,8 @@ import type { DownloadResponse } from "./api";
 type DownloadFile = DownloadResponse["files"][number];
 
 function sanitizeDownloadName(name: string, fallback: string): string {
+  // Filenames must exclude control characters as well as reserved path symbols.
+  // eslint-disable-next-line no-control-regex
   return name.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").trim() || fallback;
 }
 

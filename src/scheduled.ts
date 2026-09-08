@@ -1,4 +1,4 @@
-/** Hourly cron cleanup - guarantees nothing dangles in R2 or D1:
+/** Hourly best-effort cron cleanup (R2 failures can leave orphaned objects):
  *
  * 1. Unconfirmed shares older than 24h (browser closed mid-upload):
  *    R2 objects + all DB rows removed.
@@ -8,6 +8,9 @@
  *    row deactivated (kept for the admin dashboard history).
  * 4. Password attempts older than 7 days, download records older than 90 days,
  *    and rate-limit hits older than 1 day pruned.
+ * 5. Expired account sessions/tokens, auth attempts older than one day, and
+ *    account audit entries older than 365 days pruned in bounded batches.
+ *    Cost usage is retained independently of content/download history purges.
  *
  * Every SELECT is capped with LIMIT so a single run stays bounded; the hourly
  * cadence drains any backlog. Each phase is isolated so one failure does not
@@ -18,6 +21,7 @@
  */
 
 import type { Env, FileRow, RequestRow, ShareRow } from "./types";
+import { sendExpiryAlerts } from "./lib/email-preferences";
 import { getRequestFiles, getShareFiles } from "./lib/db";
 import { deleteObjects } from "./lib/r2";
 
@@ -25,6 +29,7 @@ const ORPHAN_AGE_HOURS = 24;
 const ATTEMPT_RETENTION_DAYS = 7;
 const DOWNLOAD_RETENTION_DAYS = 90;
 const RATE_HITS_RETENTION_DAYS = 1;
+const ACCOUNT_AUDIT_RETENTION_DAYS = 365;
 /** Rows processed per cleanup phase per run - keeps each invocation bounded. */
 const CLEANUP_BATCH_LIMIT = 100;
 
@@ -165,6 +170,8 @@ export async function runCleanup(env: Env): Promise<void> {
     ["expired shares/requests", () => cleanupExpired(env)],
     ["history purge", () => autoPurgeHistory(env)],
     ["bookkeeping prune", () => pruneBookkeeping(env)],
+    ["account bookkeeping prune", () => pruneAccountBookkeeping(env)],
+    ["expiry email alerts", () => sendExpiryAlerts(env)],
   ];
 
   const outcomes = await Promise.allSettled(phases.map(([, run]) => run()));
@@ -173,4 +180,28 @@ export async function runCleanup(env: Env): Promise<void> {
       console.warn(`Cleanup phase '${phases[i]![0]}' failed`, outcome.reason);
     }
   });
+}
+
+/** Epoch seconds for auth expiry; ISO UTC for audit dates. Each indexed delete
+ * is capped independently so the hourly cron gradually drains large backlogs.
+ */
+async function pruneAccountBookkeeping(env: Env): Promise<void> {
+  const now = Math.floor(Date.now() / 1000);
+  await env.DB.batch([
+    env.DB.prepare(`DELETE FROM notification_claims WHERE event_key IN
+      (SELECT event_key FROM notification_claims WHERE created_at < ? ORDER BY created_at LIMIT ?)`)
+      .bind(now - 7 * 86400, CLEANUP_BATCH_LIMIT),
+    env.DB.prepare(`DELETE FROM user_sessions WHERE token_hash IN
+      (SELECT token_hash FROM user_sessions WHERE expires_at <= ? ORDER BY expires_at LIMIT ?)`)
+      .bind(now, CLEANUP_BATCH_LIMIT),
+    env.DB.prepare(`DELETE FROM password_tokens WHERE token_hash IN
+      (SELECT token_hash FROM password_tokens WHERE expires_at <= ? ORDER BY expires_at LIMIT ?)`)
+      .bind(now, CLEANUP_BATCH_LIMIT),
+    env.DB.prepare(`DELETE FROM auth_attempts WHERE id IN
+      (SELECT id FROM auth_attempts WHERE at < ? ORDER BY at LIMIT ?)`)
+      .bind(now - 86400, CLEANUP_BATCH_LIMIT),
+    env.DB.prepare(`DELETE FROM account_audit WHERE id IN
+      (SELECT id FROM account_audit WHERE created_at < ? ORDER BY created_at LIMIT ?)`)
+      .bind(daysAgoIso(ACCOUNT_AUDIT_RETENTION_DAYS), CLEANUP_BATCH_LIMIT),
+  ]);
 }

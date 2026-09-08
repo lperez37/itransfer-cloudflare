@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, type FormEvent } from "react";
-import { requests } from "../lib/api";
+import { useWorkspace } from "../context/workspace";
 import {
   Loader2,
   Check,
@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 export default function CreateRequestPage() {
+  const { client: { requests } } = useWorkspace();
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
   const [expiryDays, setExpiryDays] = useState(7);

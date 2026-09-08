@@ -10,6 +10,9 @@ dist/
 .env
 .env.*
 
+# Transactional mail credentials (never commit)
+transactional.key*
+
 # Per-instance deployment config (personal domains, resource ids)
 wrangler.local.jsonc
 r2-cors.local.json

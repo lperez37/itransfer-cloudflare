@@ -76,6 +76,17 @@
 }
 
 @layer components {
+  .btn-secondary:disabled,
+  .btn-danger:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  button:focus-visible,
+  a:focus-visible {
+    outline: 2px solid var(--color-primary-light);
+    outline-offset: 3px;
+  }
   .surface {
     background: var(--color-surface);
     border: 1px solid var(--color-border);

@@ -1,97 +1,132 @@
-/** Auth middleware: signed session cookies for the admin UI, bearer token for
- * the programmatic /api/v1 API, and a combined variant that accepts either. */
-
+/** Opaque, DB-authoritative sessions. Old signed cookies are intentionally invalid. */
 import type { Context } from "hono";
 import { createMiddleware } from "hono/factory";
 import { getCookie } from "hono/cookie";
 import { HTTPException } from "hono/http-exception";
-import type { AppEnv, Env } from "../types";
-import { SESSION_COOKIE, SESSION_EPOCH_KEY, sessionMaxAge } from "../types";
-import { timingSafeEqualStr, verifySessionToken } from "./crypto";
+import type { AppEnv, UserRow } from "../types";
+import { SESSION_COOKIE } from "../types";
+import { timingSafeEqualStr } from "./crypto";
+import { nowSeconds, tokenHash } from "./accounts";
 
-/** Current session-revocation epoch (unix seconds); 0 when never bumped. */
-export async function getSessionEpoch(env: Pick<Env, "DB">): Promise<number> {
-  const row = await env.DB.prepare("SELECT value FROM app_settings WHERE key = ?")
-    .bind(SESSION_EPOCH_KEY)
-    .first<{ value: string }>();
-  const epoch = row ? Number(row.value) : 0;
-  return Number.isFinite(epoch) && epoch > 0 ? epoch : 0;
-}
-
-/** Bump the epoch to now, invalidating every session issued so far. */
-export async function bumpSessionEpoch(env: Pick<Env, "DB">): Promise<void> {
-  const now = String(Math.floor(Date.now() / 1000));
-  await env.DB.prepare(
-    "INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
-  )
-    .bind(SESSION_EPOCH_KEY, now)
-    .run();
-}
-
-function isAdminEmail(c: Context<AppEnv>, email: string): boolean {
-  return email === c.env.ADMIN_EMAIL;
-}
-
-/** Admin email from a valid session cookie, or null if absent/invalid/revoked. */
-export async function sessionEmail(c: Context<AppEnv>): Promise<string | null> {
-  const token = getCookie(c, SESSION_COOKIE);
-  if (!token) return null;
-  const epoch = await getSessionEpoch(c.env);
-  const email = await verifySessionToken(
-    token,
-    c.env.SESSION_SECRET,
-    sessionMaxAge(c.env),
-    epoch
-  );
-  if (email === null || !isAdminEmail(c, email)) return null;
-  return email;
-}
-
-async function bearerEmail(c: Context<AppEnv>): Promise<string | null> {
-  if (!c.env.API_BEARER_TOKEN) return null;
-  const header = c.req.header("Authorization");
-  if (!header?.startsWith("Bearer ")) return null;
-  const token = header.slice("Bearer ".length).trim();
-  if (!token) return null;
-  if (!(await timingSafeEqualStr(token, c.env.API_BEARER_TOKEN))) return null;
-  return c.env.ADMIN_EMAIL;
-}
-
-/** Session-cookie auth for the admin UI routes. */
-export const requireSession = createMiddleware<AppEnv>(async (c, next) => {
-  const email = await sessionEmail(c);
-  if (email === null) {
-    throw new HTTPException(401, { message: "Not authenticated" });
+export function assertSameOrigin(c: Context<AppEnv>): void {
+  if (["GET", "HEAD", "OPTIONS"].includes(c.req.method)) return;
+  if (c.req.header("Origin") !== new URL(c.req.url).origin) {
+    throw new HTTPException(403, { message: "Same-origin request required" });
   }
-  c.set("userEmail", email);
+}
+export const csrfProtection = createMiddleware<AppEnv>(async (c, next) => {
+  assertSameOrigin(c);
   await next();
 });
+export const requireSameOrigin = csrfProtection;
 
-/** Bearer-token auth for /api/v1 routes. */
-export const requireBearer = createMiddleware<AppEnv>(async (c, next) => {
-  if (!c.env.API_BEARER_TOKEN) {
-    throw new HTTPException(503, { message: "API bearer token not configured" });
+async function loadSession(c: Context<AppEnv>): Promise<UserRow | null> {
+  const token = getCookie(c, SESSION_COOKIE);
+  if (!token || !/^[a-f0-9]{64}$/.test(token)) return null;
+  const hash = await tokenHash(token);
+  const row = await c.env.DB.prepare(`SELECT u.*, s.reauth_at FROM user_sessions s
+    JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?
+    AND u.status='active' AND s.generation=u.session_generation`)
+    .bind(hash, nowSeconds()).first<UserRow & { reauth_at: number }>();
+  if (!row) return null;
+  const expectedUser = c.req.header("X-Expected-User");
+  if (expectedUser !== undefined && expectedUser !== row.id) {
+    throw new HTTPException(401, {
+      message: "The signed-in account changed. Sign in again before continuing",
+      res: new Response(null, {
+        status: 401,
+        headers: { "X-Identity-Mismatch": "1", "Cache-Control": "no-store" },
+      }),
+    });
   }
-  const email = await bearerEmail(c);
-  if (email === null) {
+  c.set("user", row);
+  c.set("userEmail", row.email);
+  c.set("userId", row.id);
+  c.set("sessionId", hash);
+  c.set("sessionReauthAt", row.reauth_at);
+  return row;
+}
+export async function sessionEmail(c: Context<AppEnv>): Promise<string | null> {
+  return (await loadSession(c))?.email ?? null;
+}
+/** Restricted migration accounts may only inspect/logout or repair themselves.
+ * Keep this outside loadSession so reauthentication and recovery retain their
+ * existing identity/generation checks without gaining workspace access.
+ */
+function assertPasswordChanged(c: Context<AppEnv>): void {
+  if (!c.get("user").password_change_required) return;
+  const allowed = new Set([
+    "GET /api/auth/me", "POST /api/auth/logout", "POST /api/auth/reauth",
+    "POST /api/auth/password", "GET /api/auth/email-preferences", "PATCH /api/auth/email-preferences",
+  ]);
+  if (allowed.has(`${c.req.method} ${c.req.path}`)) return;
+  throw new HTTPException(403, {
+    message: "Change your password before accessing your workspace",
+    res: new Response(null, { status: 403, headers: {
+      "X-Password-Change-Required": "1", "Cache-Control": "no-store",
+    } }),
+  });
+}
+export const requireSession = createMiddleware<AppEnv>(async (c, next) => {
+  c.header("Cache-Control", "no-store");
+  assertSameOrigin(c);
+  if (!(await loadSession(c))) throw new HTTPException(401, { message: "Not authenticated" });
+  assertPasswordChanged(c);
+  await next();
+});
+export const requireAdmin = createMiddleware<AppEnv>(async (c, next) => {
+  c.header("Cache-Control", "no-store");
+  if (!(await loadSession(c))) throw new HTTPException(401, { message: "Not authenticated" });
+  assertSameOrigin(c);
+  assertPasswordChanged(c);
+  if (c.get("user").role !== "admin") throw new HTTPException(403, { message: "Administrator required" });
+  await next();
+});
+/** Re-read rather than trusting cached context; confirmations belong to ONE session. */
+export async function assertRecentAuth(c: Context<AppEnv>): Promise<void> {
+  if (!(await loadSession(c))) throw new HTTPException(401, { message: "Not authenticated" });
+  if (c.get("sessionReauthAt") <= nowSeconds() - 300) {
+    throw new HTTPException(403, {
+      message: "Recent password confirmation required",
+      res: new Response(null, { status: 403, headers: {
+        "X-Reauth-Required": "1", "Cache-Control": "no-store",
+      } }),
+    });
+  }
+}
+export const requireRecentAuth = createMiddleware<AppEnv>(async (c, next) => {
+  await assertRecentAuth(c);
+  await next();
+});
+async function loadBearer(c: Context<AppEnv>): Promise<boolean> {
+  const expected = c.env.API_BEARER_TOKEN;
+  const header = c.req.header("Authorization");
+  if (!expected || !header?.startsWith("Bearer ") || header.length > 4096) return false;
+  if (!(await timingSafeEqualStr(header.slice(7).trim(), expected))) return false;
+  // Global automation credential, not a login, and never a bootstrap path.
+  const user = await c.env.DB.prepare(`SELECT u.* FROM users u JOIN app_settings a
+    ON a.value=u.id WHERE a.key='bootstrap_admin_id'`).first<UserRow>();
+  c.set("userEmail", user?.email ?? c.env.ADMIN_EMAIL);
+  c.set("userId", user?.id ?? null);
+  if (user) c.set("user", user);
+  return true;
+}
+export const requireBearer = createMiddleware<AppEnv>(async (c, next) => {
+  if (!c.env.API_BEARER_TOKEN) throw new HTTPException(503, { message: "API bearer token not configured" });
+  if (!(await loadBearer(c))) {
+    c.header("WWW-Authenticate", "Bearer");
     throw new HTTPException(401, {
       message: "Bearer token required",
-      res: new Response(null, { headers: { "WWW-Authenticate": "Bearer" } }),
+      res: new Response(null, { status: 401, headers: { "WWW-Authenticate": "Bearer", "Cache-Control": "no-store" } }),
     });
   }
-  c.set("userEmail", email);
   await next();
 });
-
-/** Accepts a valid session cookie OR a valid bearer token. */
 export const requireSessionOrBearer = createMiddleware<AppEnv>(async (c, next) => {
-  const email = (await sessionEmail(c)) ?? (await bearerEmail(c));
-  if (email === null) {
-    throw new HTTPException(401, {
-      message: "Not authenticated",
-      res: new Response(null, { headers: { "WWW-Authenticate": "Bearer" } }),
-    });
+  if (!(await loadBearer(c))) {
+    assertSameOrigin(c);
+    if (!(await loadSession(c))) throw new HTTPException(401, { message: "Not authenticated" });
+    assertPasswordChanged(c);
   }
-  c.set("userEmail", email);
   await next();
 });

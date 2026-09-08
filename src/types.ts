@@ -12,11 +12,15 @@ export interface Env {
   HISTORY_RETENTION_DAYS?: string;
 
   // Secrets
+  // High-entropy credential root, minimum 32 characters. Rotation invalidates
+  // account password verifiers and requires explicit password resets.
   SESSION_SECRET: string;
   ADMIN_EMAIL: string;
   ADMIN_PASSWORD: string;
   API_BEARER_TOKEN?: string;
   NTFY_URL?: string;
+  TRANSACTIONAL_MAIL_API_URL?: string;
+  TRANSACTIONAL_MAIL_API_KEY?: string;
   R2_ACCESS_KEY_ID?: string;
   R2_SECRET_ACCESS_KEY?: string;
   R2_ACCOUNT_ID?: string;
@@ -25,14 +29,36 @@ export interface Env {
 /** Hono context variables set by auth middleware. */
 export interface Variables {
   userEmail: string;
+  user: UserRow;
+  userId: string | null;
+  workspaceUser: UserRow;
+  workspaceReadOnly: boolean;
+  sessionId: string;
+  sessionReauthAt: number;
 }
 
 export type AppEnv = { Bindings: Env; Variables: Variables };
 
 // ── D1 row shapes ────────────────────────────────────────────────────────────
 
+export interface UserRow {
+  id: string;
+  email: string;
+  name: string;
+  role: "admin" | "user";
+  status: "pending" | "active" | "disabled";
+  password_hash: string | null;
+  password_salt: string;
+  password_change_required: number;
+  created_at: string;
+  updated_at: string;
+  last_login_at: string | null;
+  session_generation: number;
+}
+
 export interface ShareRow {
   id: string;
+  owner_user_id: string | null;
   title: string | null;
   id_format: string;
   created_at: string;
@@ -50,6 +76,7 @@ export interface ShareRow {
 
 export interface RequestRow {
   id: string;
+  owner_user_id: string | null;
   title: string;
   message: string | null;
   id_format: string;
@@ -92,9 +119,8 @@ export const SESSION_COOKIE = "itransfer_session";
  * Tokens issued before this value are rejected - see lib/crypto.ts. */
 export const SESSION_EPOCH_KEY = "session_epoch";
 
-// A short default keeps a leaked/forgotten cookie from staying valid for
-// months; operators can extend it via SESSION_MAX_AGE_DAYS if desired.
-const DEFAULT_SESSION_MAX_AGE_DAYS = 7;
+// Owner-approved lifetime; DB revocation is checked on every request.
+const DEFAULT_SESSION_MAX_AGE_DAYS = 90;
 
 /** Session lifetime in seconds, configurable via SESSION_MAX_AGE_DAYS. */
 export function sessionMaxAge(env: Pick<Env, "SESSION_MAX_AGE_DAYS">): number {
@@ -119,4 +145,16 @@ export function assertEnv(env: Env): void {
   if (env.ADMIN_PASSWORD === INSECURE_DEFAULT_PASSWORD) {
     throw new Error("ADMIN_PASSWORD is set to the insecure default 'change-me'. Set a real password.");
   }
+  if (env.SESSION_SECRET.length < 32) {
+    throw new Error("SESSION_SECRET must contain at least 32 characters of high-entropy random material. Rotation requires account password resets.");
+  }
+}
+export interface EmailPreferences {
+  share_downloads: boolean;
+  request_uploads: boolean;
+  password_changed: boolean;
+  expiry_alerts: boolean;
+  invitation_reminders: boolean;
+  welcome: true;
+  password_reset: true;
 }

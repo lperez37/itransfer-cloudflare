@@ -129,10 +129,10 @@ export default function CostPage() {
     <div className="animate-fade-in">
       <div className="mb-6">
         <h1 className="text-2xl sm:text-3xl font-bold text-text-primary tracking-tight">
-          Cost Estimation
+          Costs
         </h1>
         <p className="text-text-muted text-sm mt-1">
-          Cloudflare R2 storage and operations cost breakdown
+          Estimated R2 usage across every workspace. Visible to administrators only.
         </p>
       </div>
 
@@ -144,7 +144,7 @@ export default function CostPage() {
           </div>
           <div>
             <p className="text-sm text-text-muted">
-              Estimated Monthly Cost
+              All Users · Estimated Monthly R2 Cost
             </p>
             <p className="text-3xl sm:text-4xl font-bold text-primary-light font-[family-name:var(--font-display)] tracking-tight">
               {formatUSDLarge(data.estimated_monthly_cost_usd)}
@@ -153,8 +153,8 @@ export default function CostPage() {
         </div>
         {data.estimated_monthly_cost_usd === 0 ? (
           <p className="text-xs text-text-muted mt-2">
-            Your usage fits entirely within R2's free tier (10 GB storage, 1M writes, 10M reads per
-            month) - this instance currently costs nothing to run.
+            Estimated usage fits within one shared R2 free tier, assuming that allowance
+            is available to this instance. Workers, D1, and other services are not included.
           </p>
         ) : (
           data.free_tier_savings_usd !== undefined &&
@@ -167,6 +167,51 @@ export default function CostPage() {
           )
         )}
       </div>
+
+      {data.users && (
+        <section className="surface rounded-lg p-5 sm:p-6 mb-6" aria-labelledby="user-costs-title">
+          <h2 id="user-costs-title" className="font-semibold text-text-primary">Cost by User</h2>
+          <p className="text-sm text-text-muted mt-1 mb-5">
+            Gross estimates before shared allowances. Storage reflects current files;
+            operations cover the last {data.window_days ?? 30} days.
+          </p>
+          {data.users.length === 0 ? (
+            <p className="text-sm text-text-secondary">No user usage available yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <caption className="sr-only">Per-user storage, estimated operations, and gross monthly R2 cost</caption>
+                <thead className="text-text-muted border-b border-border">
+                  <tr>
+                    <th scope="col" className="py-3 pr-4 font-medium">User</th>
+                    <th scope="col" className="py-3 px-3 text-right font-medium whitespace-nowrap">Storage</th>
+                    <th scope="col" className="py-3 px-3 text-right font-medium">Files</th>
+                    <th scope="col" className="py-3 px-3 text-right font-medium">Writes</th>
+                    <th scope="col" className="py-3 px-3 text-right font-medium">Reads</th>
+                    <th scope="col" className="py-3 pl-3 text-right font-medium whitespace-nowrap">Gross / month</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.users.map((user) => (
+                    <tr key={user.user_id} className="border-b border-border last:border-0">
+                      <th scope="row" className="py-4 pr-4 font-normal">
+                        <span className="block font-medium text-text-primary">{user.name}</span>
+                        <span className="block text-text-muted text-xs break-all">{user.email}</span>
+                      </th>
+                      <td className="py-4 px-3 text-right tabular-nums whitespace-nowrap">{formatBytes(user.total_storage_bytes)}</td>
+                      <td className="py-4 px-3 text-right tabular-nums">{user.total_files.toLocaleString()}</td>
+                      <td className="py-4 px-3 text-right tabular-nums">{user.class_a_ops_month.toLocaleString()}</td>
+                      <td className="py-4 px-3 text-right tabular-nums">{user.class_b_ops_month.toLocaleString()}</td>
+                      <td className="py-4 pl-3 text-right tabular-nums whitespace-nowrap">{formatUSD(user.gross_monthly_cost_usd)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {data.estimate_note && <p className="text-xs text-text-muted mt-5 leading-relaxed">{data.estimate_note}</p>}
+        </section>
+      )}
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">

@@ -5,7 +5,8 @@ import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import type { AppEnv } from "../types";
 import { requireSession } from "../lib/auth";
-import { getRequest, getRequestFiles, toFileInfo } from "../lib/db";
+import { getRequestFiles, toFileInfo } from "../lib/db";
+import { getWorkspaceRequest, requireWorkspace } from "../lib/workspace";
 import { parseBody, requestCreateSchema } from "../lib/schemas";
 import { isoInDays } from "../lib/util";
 
@@ -21,18 +22,20 @@ import {
 
 export const requestRoutes = new Hono<AppEnv>()
   .use("*", requireSession)
+  .use("*", requireWorkspace)
   .post("/", async (c) => {
     const body = await parseBody(c.req, requestCreateSchema);
-    const requestId = await createFileRequest(c.env, body, c.get("userEmail"));
+    const owner = c.get("workspaceUser");
+    const requestId = await createFileRequest(c.env, body, owner.email, owner.id);
     return c.json({ request_id: requestId });
   })
   .get("/", async (c) => {
-    const rows = await listRequests(c.env.DB);
+    const rows = await listRequests(c.env.DB, c.get("workspaceUser").id);
     return c.json(rows.map(serializeRequest));
   })
   .patch("/:requestId", async (c) => {
     // Extend (or shorten) the expiry of a live request, measured from now.
-    const req = await getRequest(c.env.DB, c.req.param("requestId"));
+    const req = await getWorkspaceRequest(c, c.req.param("requestId"));
     if (!req) throw new HTTPException(404, { message: "Request not found" });
     if (!req.is_active) {
       throw new HTTPException(409, {
@@ -41,13 +44,13 @@ export const requestRoutes = new Hono<AppEnv>()
     }
     const body = await parseBody(c.req, extendSchema);
     const expiresAt = isoInDays(body.expiry_days);
-    await c.env.DB.prepare("UPDATE requests SET expires_at = ? WHERE id = ?")
-      .bind(expiresAt, req.id)
+    await c.env.DB.prepare("UPDATE requests SET expires_at = ? WHERE id = ? AND owner_user_id = ?")
+      .bind(expiresAt, req.id, c.get("workspaceUser").id)
       .run();
     return c.json({ detail: "Expiry updated", expires_at: expiresAt });
   })
   .get("/:requestId", async (c) => {
-    const req = await getRequest(c.env.DB, c.req.param("requestId"));
+    const req = await getWorkspaceRequest(c, c.req.param("requestId"));
     if (!req) throw new HTTPException(404, { message: "Request not found" });
     const files = await getRequestFiles(c.env.DB, req.id);
     return c.json({
@@ -66,19 +69,19 @@ export const requestRoutes = new Hono<AppEnv>()
     });
   })
   .delete("/:requestId", async (c) => {
-    const req = await getRequest(c.env.DB, c.req.param("requestId"));
+    const req = await getWorkspaceRequest(c, c.req.param("requestId"));
     if (!req) throw new HTTPException(404, { message: "Request not found" });
     await deactivateRequest(c.env, req);
     return c.json({ detail: "Request deleted" });
   })
   .delete("/:requestId/purge", async (c) => {
-    const req = await getRequest(c.env.DB, c.req.param("requestId"));
+    const req = await getWorkspaceRequest(c, c.req.param("requestId"));
     if (!req) throw new HTTPException(404, { message: "Request not found" });
     await purgeRequest(c.env, req);
     return c.json({ detail: "Request permanently deleted" });
   })
   .post("/:requestId/download", async (c) => {
-    const req = await getRequest(c.env.DB, c.req.param("requestId"));
+    const req = await getWorkspaceRequest(c, c.req.param("requestId"));
     if (!req) throw new HTTPException(404, { message: "Request not found" });
     // Deactivated requests have had their uploaded R2 objects purged, so
     // presigned URLs would 404 - reject rather than return dead links.

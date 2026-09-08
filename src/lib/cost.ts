@@ -1,19 +1,17 @@
 /** Monthly cost estimation for Cloudflare R2 (standard storage).
  *
  * Method:
- * - Storage: current bytes across all file records, billed per GB-month.
- * - Class A (writes): operations in the last 30 days, derived from uploads -
+ * - Storage: current confirmed bytes under active parents, not GB-days.
+ * - Class A (writes): durable estimates in the last 30 days, from confirmations -
  *   1 PUT per small file; multipart files count create + one op per part +
  *   complete (parts estimated from file size at MULTIPART_PART_SIZE).
- * - Class B (reads): download events in the last 30 days (one GET per file).
+ * - Class B (reads): public share events and request URL issuance in the last
+ *   30 days (one estimated GET per file; workspace share downloads excluded).
  * - Egress: free on R2.
- * - The monthly free tier is then subtracted, so the estimate reflects what
- *   would actually be billed.
+ * - One global free tier is assumed entirely available. This is NOT billing.
  *
  * Pricing: https://developers.cloudflare.com/r2/pricing/
  */
-
-import { MULTIPART_PART_SIZE, MULTIPART_THRESHOLD } from "../types";
 
 const PRICING = {
   storagePerGbMonth: 0.015,
@@ -47,25 +45,33 @@ export interface CostEstimate {
   class_b_ops_month: number;
   gross_monthly_cost_usd: number;
   free_tier_savings_usd: number;
+  users?: UserCostEstimate[];
+  estimate_note?: string;
 }
 
-/** Class A operations needed to upload one file of `size` bytes. */
-function classAOpsForFile(size: number): number {
-  if (size <= MULTIPART_THRESHOLD) return 1; // single PUT
-  // CreateMultipartUpload + one UploadPart per part + CompleteMultipartUpload
-  return Math.ceil(size / MULTIPART_PART_SIZE) + 2;
+interface UserCostEstimate {
+  user_id: string;
+  name: string;
+  email: string;
+  total_storage_bytes: number;
+  total_files: number;
+  class_a_ops_month: number;
+  class_b_ops_month: number;
+  gross_monthly_cost_usd: number;
 }
 
+/** Admin-only reporting data; callers must enforce administrator authorization. */
 export async function estimateCost(db: D1Database): Promise<CostEstimate> {
   const windowStart = new Date(Date.now() - WINDOW_DAYS * 24 * 3600 * 1000).toISOString();
+  const windowEnd = new Date().toISOString();
 
-  const [totals, recentFiles, recentDownloads] = await Promise.all([
+  const [totals, recentUsage, userUsage] = await Promise.all([
     db
       .prepare(
         `SELECT
-           (SELECT COALESCE(SUM(file_size), 0) FROM files) AS total_storage_bytes,
-           (SELECT COUNT(*) FROM files) AS total_files,
-           (SELECT COUNT(*) FROM downloads) AS total_downloads,
+           (SELECT COALESCE(SUM(storage_bytes), 0) FROM cost_storage) AS total_storage_bytes,
+           (SELECT COUNT(*) FROM cost_storage) AS total_files,
+           (SELECT COUNT(*) FROM cost_usage WHERE kind = 'download') AS total_downloads,
            (SELECT COUNT(*) FROM shares WHERE is_active = 1) AS active_shares,
            (SELECT COUNT(*) FROM requests WHERE is_active = 1) AS active_requests`
       )
@@ -77,18 +83,34 @@ export async function estimateCost(db: D1Database): Promise<CostEstimate> {
         active_requests: number;
       }>(),
     db
-      .prepare("SELECT COALESCE(file_size, 0) AS size FROM files WHERE created_at >= ?")
-      .bind(windowStart)
-      .all<{ size: number }>(),
+      .prepare(`SELECT
+        COALESCE(SUM(CASE WHEN kind = 'upload' THEN operations ELSE 0 END), 0) AS a,
+        COALESCE(SUM(CASE WHEN kind = 'download' THEN operations ELSE 0 END), 0) AS b
+        FROM cost_usage WHERE occurred_at >= ? AND occurred_at <= ?`)
+      .bind(windowStart, windowEnd)
+      .first<{ a: number; b: number }>(),
     db
-      .prepare("SELECT COUNT(*) AS n FROM downloads WHERE downloaded_at >= ?")
-      .bind(windowStart)
-      .first<{ n: number }>(),
+      .prepare(`WITH storage AS (
+        SELECT owner_user_id, SUM(storage_bytes) AS bytes, COUNT(*) AS files
+        FROM cost_storage GROUP BY owner_user_id
+      ), usage AS (
+        SELECT COALESCE(owner_user_id,
+          (SELECT value FROM app_settings WHERE key = 'bootstrap_admin_id')) AS owner,
+          SUM(CASE WHEN kind = 'upload' THEN operations ELSE 0 END) AS a,
+          SUM(CASE WHEN kind = 'download' THEN operations ELSE 0 END) AS b
+        FROM cost_usage WHERE occurred_at >= ? AND occurred_at <= ? GROUP BY owner
+      ) SELECT u.id AS user_id, u.name, u.email,
+        COALESCE(s.bytes, 0) AS total_storage_bytes, COALESCE(s.files, 0) AS total_files,
+        COALESCE(o.a, 0) AS class_a_ops_month, COALESCE(o.b, 0) AS class_b_ops_month
+      FROM users u LEFT JOIN storage s ON s.owner_user_id = u.id
+      LEFT JOIN usage o ON o.owner = u.id ORDER BY u.name, u.id`)
+      .bind(windowStart, windowEnd)
+      .all<Omit<UserCostEstimate, 'gross_monthly_cost_usd'>>(),
   ]);
 
   const totalStorageBytes = totals?.total_storage_bytes ?? 0;
-  const classAOps = recentFiles.results.reduce((sum, f) => sum + classAOpsForFile(f.size), 0);
-  const classBOps = recentDownloads?.n ?? 0;
+  const classAOps = recentUsage?.a ?? 0;
+  const classBOps = recentUsage?.b ?? 0;
 
   const storageGbMonth = totalStorageBytes / 1024 ** 3;
   const grossStorage = storageGbMonth * PRICING.storagePerGbMonth;
@@ -107,6 +129,15 @@ export async function estimateCost(db: D1Database): Promise<CostEstimate> {
   const round = (n: number) => Math.round(n * 10_000) / 10_000;
 
   return {
+    users: userUsage.results.map((user) => ({
+      ...user,
+      gross_monthly_cost_usd: round(
+        user.total_storage_bytes / 1024 ** 3 * PRICING.storagePerGbMonth +
+        user.class_a_ops_month / 1_000_000 * PRICING.classAPerMillion +
+        user.class_b_ops_month / 1_000_000 * PRICING.classBPerMillion
+      ),
+    })),
+    estimate_note: 'Estimates, not Cloudflare billing. Storage is a current confirmed-file snapshot under active parents, not historical GB-days; unconfirmed uploads and inactive history are excluded. Failed R2 deletions may leave uncounted objects. Operations estimate confirmed uploads, public/API share download events and request download URL issuance over 30 days, not actual reads, retries, HEADs, workspace share downloads or abandoned multipart uploads. Historical backfill uses file creation dates; previously purged usage and past request downloads are unavailable. Per-user amounts are gross; the aggregate assumes one global free tier is entirely available. Legacy unassigned usage resolves to the bootstrap admin.',
     total_storage_bytes: totalStorageBytes,
     total_files: totals?.total_files ?? 0,
     estimated_monthly_cost_usd: round(billable),

@@ -6,9 +6,10 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { AppEnv, Env } from "./types";
 import { assertEnv } from "./types";
-import { requireSession } from "./lib/auth";
+import { requireAdmin } from "./lib/auth";
 import { estimateCost } from "./lib/cost";
 import { authRoutes } from "./routes/auth";
+import { usersRoutes } from "./routes/users";
 import { shareRoutes } from "./routes/shares";
 import { requestRoutes } from "./routes/requests";
 import { publicRoutes } from "./routes/public";
@@ -16,6 +17,13 @@ import { apiV1Routes } from "./routes/apiV1";
 import { runCleanup } from "./scheduled";
 
 const app = new Hono<AppEnv>();
+
+app.use("/api/*", async (c, next) => {
+  await next();
+  c.header("Cache-Control", "no-store");
+  c.header("X-Content-Type-Options", "nosniff");
+  c.header("Referrer-Policy", "no-referrer");
+});
 
 // Errors use the same {"detail": "..."} envelope as the original FastAPI app.
 app.onError((err, c) => {
@@ -38,12 +46,13 @@ app.get("/health", (c) => c.json({ status: "ok" }));
 app.get("/ready", (c) => c.json({ status: "ready" }));
 
 app.route("/api/auth", authRoutes);
+app.route("/api/users", usersRoutes);
 app.route("/api/shares", shareRoutes);
 app.route("/api/requests", requestRoutes);
 app.route("/api/public", publicRoutes);
 app.route("/api/v1", apiV1Routes);
 
-app.get("/api/cost/estimate", requireSession, async (c) => c.json(await estimateCost(c.env.DB)));
+app.get("/api/cost/estimate", requireAdmin, async (c) => c.json(await estimateCost(c.env.DB)));
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {

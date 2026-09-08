@@ -1,10 +1,12 @@
 # Copy to .dev.vars for local development (`wrangler dev` reads it automatically).
 # In production every one of these is set with `wrangler secret put <NAME>`.
 
-# Session cookie signing key. Generate with: openssl rand -hex 32
+# Credential pepper/rate-limit root. Generate with: openssl rand -hex 32
+# Keep this stable: rotation requires account password resets after bootstrap.
 SESSION_SECRET=change-me
 
-# Admin login for the web UI.
+# Initial admin bootstrap only. Choose a unique 8-128 character password.
+# Once bootstrapped, database credentials replace these for login/recovery.
 ADMIN_EMAIL=admin@example.com
 ADMIN_PASSWORD=change-me
 
@@ -15,6 +17,12 @@ API_BEARER_TOKEN=
 # Optional ntfy.sh-compatible endpoint for push notifications on
 # uploads/downloads, e.g. https://ntfy.sh/your-private-topic
 NTFY_URL=
+
+# Optional transactional mail (server only). Welcome/reset mail cannot be opted out.
+# For a private credential file, run npm run mail:configure instead of copying keys.
+# Optional activity emails are separately default-off in Account > Email preferences.
+TRANSACTIONAL_MAIL_API_URL=
+TRANSACTIONAL_MAIL_API_KEY=
 
 # R2 S3-compatible API credentials, used to sign presigned upload/download
 # URLs so file bytes go browser <-> R2 directly (never through the Worker).

@@ -1,12 +1,10 @@
 import { useState, useEffect, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { Mail, Lock, Loader2, AlertCircle } from "lucide-react";
 import logoSvg from "../assets/logo.svg";
 
 export default function LoginPage() {
-  const { login, error } = useAuth();
-  const navigate = useNavigate();
+  const { login, error, notice } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -36,7 +34,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(email, password);
-      navigate("/dashboard");
+      // PublicOnlyRoute chooses Account or Dashboard from the returned identity.
     } catch {
       // error is set in auth context
     } finally {
@@ -66,22 +64,25 @@ export default function LoginPage() {
 
           {/* Error */}
           {displayError && (
-            <div className="mb-6 flex items-center gap-2 bg-danger/10 border border-danger/20 rounded-md px-4 py-3 text-sm text-red-400 animate-fade-in">
+            <div role="alert" className="mb-6 flex items-center gap-2 bg-danger/10 border border-danger/20 rounded-md px-4 py-3 text-sm text-red-400 animate-fade-in">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
               {displayError}
             </div>
           )}
 
           {/* Form */}
+          {notice && <p role="status" className="mb-6 text-sm text-emerald-400">{notice}</p>}
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <label className="block text-sm font-medium text-text-secondary mb-1.5">
+              <label htmlFor="login-email" className="block text-sm font-medium text-text-secondary mb-1.5">
                 Email
               </label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
                 <input
                   type="email"
+                  id="login-email"
+                  required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="input-field pl-10"
@@ -92,13 +93,15 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-text-secondary mb-1.5">
+              <label htmlFor="login-password" className="block text-sm font-medium text-text-secondary mb-1.5">
                 Password
               </label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
                 <input
                   type="password"
+                  id="login-password"
+                  required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="input-field pl-10"
@@ -123,6 +126,7 @@ export default function LoginPage() {
               )}
             </button>
           </form>
+          <p className="text-sm text-text-secondary mt-6">Need access or forgot your password? Ask your administrator to send a new single-use setup or password reset link.</p>
         </div>
 
       </div>
