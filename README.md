@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-09-08
 
-Self-hosted WeTransfer-style file sharing, built entirely on Cloudflare: **Workers** (API + static frontend), **R2** (file storage) and **D1** (metadata). One `wrangler deploy` gives you share links, file requests, password protection, expiry, download limits and push notifications - with zero servers to maintain.
+Self-hosted WeTransfer-style file sharing with **private accounts and administrator-managed users**. Share links, file requests, password protection, expiry and download limits run on Cloudflare **Workers** (API + static frontend), **R2** (files) and **D1** (metadata). The application is serverless; optional plain-text account and notification email uses a **separately operated transactional mail service** over HTTPS, not infrastructure included in the Worker deployment.
 
 File bytes never pass through the Worker: the API hands out short-lived presigned R2 URLs and browsers upload/download directly to/from R2. There is **no practical file size limit** from Workers (R2 allows objects up to ~5 TiB), egress is free, and large files use multipart uploads (50 MB parts, 4 concurrent).
 
@@ -39,14 +39,50 @@ File bytes never pass through the Worker: the API hands out short-lived presigne
 - **Programmatic API** - bearer-token `/api/v1/` endpoints for scripts and agents (see [docs/API.md](docs/API.md)).
 - **Push notifications** - [ntfy](https://ntfy.sh)-compatible notifications on uploads and downloads.
 - **Multi-language UI** - EN, NL, ES, CA, FR, IT, PT, PL, SV, DA.
+- **Accessible password controls** - consistent eye/show-hide toggles on every password input, keyboard-operable with localized labels. New account passwords require 8–128 characters and pass browser-side common-password/pattern checks.
 - **Auto-cleanup, nothing dangles** - hourly cron reclaims storage for abandoned uploads and expired shares/requests; an R2 lifecycle rule aborts incomplete multipart uploads.
+
+## User management
+
+Accounts are invite-only. Each person gets a private workspace; public transfer links remain a separate way for recipients to download or upload without an account.
+
+| Capability | User | Administrator |
+|---|---|---|
+| Shares, requests and files | Own workspace only | Own workspace, plus explicit access to other workspaces |
+| My Account | Change own password and optional email preferences | Same |
+| Users | No access | Add accounts; edit name, email and role; disable/enable; reset passwords; force sign-out of all sessions |
+| Cost reports | Hidden in both UI and API | Aggregate and per-user gross R2 estimates; one shared free tier on the aggregate |
+
+**Invite and recover:** in **Users**, add a name, email and role. Mandatory welcome mail explains iTransfer and provides a **24-hour, single-use set-password link**. The recipient chooses a password, then signs in; there is **no separate email-verification step**. Administrators can issue a **one-hour reset link**, which revokes the target's sessions and replaces earlier setup links. Login sessions last **90 days by default**; changing a password signs out every session, including the current one.
+
+**View as:** another user's workspace opens **read-only** (downloads are allowed). Changes require explicitly selecting **manage** mode and recent password confirmation. The administrator keeps their own identity: this is delegated access, not impersonation, and access attempts/outcomes are audited.
+
+**Offboarding:** disabling an account blocks login and invalidates sessions/setup links, but **does not revoke public links or delete files**. Manage those separately. The last active administrator cannot be disabled or demoted, and there is no account-delete action.
+
+### Email events and preferences
+
+All messages are **plain text, never HTML**. Users configure optional messages in **My Account**; administrators can also change them in the user's **Users** settings, with recent password confirmation.
+
+| Event / preference | When it is sent | Default |
+|---|---|---|
+| Welcome | Account creation; app introduction and 24-hour setup link | Always on |
+| Password reset | Administrator-issued recovery; one-hour link | Always on |
+| `share_downloads` | A download starts for an owned share; not proof of completion | Off |
+| `request_uploads` | An upload to an owned request is finalized | Off |
+| `password_changed` | Successful password change/reset, not initial setup | Off |
+| `expiry_alerts` | Hourly checks warn about active resources expiring within 24 hours | Off |
+| `invitation_reminders` | Administrator explicitly reminds an opted-in pending account | Off |
+
+A pending-account reminder creates a **fresh 24-hour link and invalidates the previous link**; it is not an automatic resend. Optional mail is best-effort, deduplicated and quota-limited. “Always on” means welcome/reset cannot be opted out of, **not guaranteed delivery**. A `queued` response means accepted for processing. Failed, unknown or unconfigured submissions leave the account operation intact; use a still-valid returned link privately as a manual fallback. An unknown submission may already be queued—investigate rather than blindly resend. See [mail limits and recovery](docs/USER-MANAGEMENT.md#transactional-email-and-preferences).
 
 ## Architecture
 
 ```
 Browser ── /api/* ──────────► Worker (Hono) ──► D1 (metadata)
    │                              │
-   │                              └─► signs presigned URLs (aws4fetch)
+   │                              ├─► signs presigned URLs (aws4fetch)
+   │                              └─► HTTPS Mailer API ──► SMTP provider
+   │                                  (separate service; no file bytes)
    └── PUT/GET file bytes ──────► R2 (direct, never through the Worker)
 ```
 
@@ -59,92 +95,87 @@ Browser ── /api/* ──────────► Worker (Hono) ──► 
 
 ## Deploy your own
 
-Prerequisites: a Cloudflare account using **Workers Free**, **Node 22.19+**, and `npx wrangler login`. Browser account authentication requires native WebCrypto in a secure context: HTTPS in production or localhost for development. Configure transactional mail for account emails; without it, account operations still provide manual links.
+**Start with the [first-time installation guide](docs/INSTALLATION.md).** It takes a fresh clone through a complete installation, including the new account and recovery flows. There is no all-in-one installer or `npm run setup`: the guide is the supported sequence, and `mail:configure` only configures the mail connection.
 
-**Workers Free reliability:** validate complete account flows on isolated hosted Free staging, measuring Worker CPU separately from browser derivation and wall time. The deployed release's isolated checks had no runtime failures, but **four requests exceeded 10 ms** (including cold execution): this is not a strict 10 ms validation pass. Free permits occasional CPU bursts, not guaranteed capacity for every request. No plan upgrade was made. See [release evidence and limits](docs/USER-MANAGEMENT.md#release-status-2026-09-08).
+The guide covers, in order:
 
-For an existing installation, follow the [migration and rollout checklist](docs/USER-MANAGEMENT.md#deployment-and-rollback) first: back up, apply schema migrations before the new binary, and bootstrap deliberately.
+1. Install Node/dependencies and authenticate Wrangler to the intended Cloudflare account.
+2. Create private configuration files and provision D1/R2. Configure the real D1 ID **before** applying all database migrations.
+3. Set the HTTPS origin, R2 CORS, multipart cleanup, and bucket-scoped R2 credentials.
+4. Prepare the first administrator, stable credential root, and optional automation/mail settings in an ignored secret file.
+5. Deploy code and initial secrets together, using the private configuration and minification.
+6. Sign in as the first administrator, add users, and test sharing, private workspaces, and password recovery.
 
-### 1. Create the resources
+Prerequisites are a Cloudflare account using **Workers Free**, enabled R2, and **Node 22.19+**. Browser authentication requires native WebCrypto in a secure context: HTTPS in production or localhost for development. The public configuration deliberately contains a placeholder D1 ID; keep actual instance values in ignored local configuration, not in this repository's tracked files.
 
-```bash
-npx wrangler d1 create itransfer          # paste the printed id into wrangler.jsonc
-npx wrangler r2 bucket create itransfer-files
-npx wrangler d1 migrations apply itransfer --remote
-```
+Email is a separate choice: bring a compatible transactional Mailer API, or start with private manual setup/reset links. Installing iTransfer does **not** provision the mail service or grant access to somebody else's mail instance. SMTP credentials are never an iTransfer installation prerequisite.
 
-### 2. Configure R2 CORS + API token
+**Workers Free reliability:** validate complete account flows on isolated hosted Free staging, measuring Worker CPU separately from browser derivation and wall time. Not every request is guaranteed to stay below 10 ms; occasional CPU bursts are not guaranteed capacity. See [historical release evidence and limits](docs/USER-MANAGEMENT.md#release-status-2026-09-08) and [Workers limits](https://developers.cloudflare.com/workers/platform/limits/).
 
-Browsers talk to R2 directly, so the bucket needs CORS (edit `r2-cors.json` to your domain first):
+**Existing installation?** Use the [upgrade and rollback checklist](docs/USER-MANAGEMENT.md#deployment-and-rollback), not the fresh-install secret initialization steps. Back up first, retain the credential root, apply new migrations before the new binary, and do not overwrite production secrets with old local values. See the [installation troubleshooting table](docs/INSTALLATION.md#troubleshooting-and-maintenance) for failed first installs.
 
-```bash
-npx wrangler r2 bucket cors set itransfer-files --file r2-cors.json
-```
+### Credentials and bootstrap
 
-Also set the lifecycle policy that aborts abandoned multipart uploads after 7 days (otherwise incomplete parts accumulate invisibly and are billed):
+`ADMIN_EMAIL` and `ADMIN_PASSWORD` bootstrap the first administrator only when there are no users and no durable bootstrap marker. Bootstrap assigns ownerless shares/requests to that administrator. For migration compatibility, the exact configured password is accepted even if it fails the new policy, but **a password change is then required before workspace/admin access**. Environment credentials remain startup requirements, **never a reset or login fallback after bootstrap**. See [bootstrap and first-login repair](docs/USER-MANAGEMENT.md#bootstrap) for the protocol and recovery constraints.
 
-```bash
-npx wrangler r2 bucket lifecycle set itransfer-files --file r2-lifecycle.json
-```
+**Protect `SESSION_SECRET`:** generate at least 32 random bytes, represented as 64 hex characters. Runtime checks only a minimum length of 32 characters, not entropy. It is the credential root for HKDF-derived HMAC peppering and rate-limit pseudonyms, **not a login-cookie signing key**. Rotation invalidates stored account verifiers and requires controlled account resets; do not casually rotate it to revoke sessions. See [credential-root recovery](docs/USER-MANAGEMENT.md#credential-root-and-rotation).
 
-Create an R2 API token in the dashboard (**R2 → Manage R2 API Tokens → Create API Token**, permission *Object Read & Write*, scoped to the bucket). You'll get an Access Key ID and Secret Access Key used in step 3.
-
-### 3. Set secrets
-
-```bash
-openssl rand -hex 32 | npx wrangler secret put SESSION_SECRET
-npx wrangler secret put ADMIN_EMAIL
-npx wrangler secret put ADMIN_PASSWORD
-npx wrangler secret put API_BEARER_TOKEN      # openssl rand -hex 32
-npx wrangler secret put NTFY_URL              # optional, e.g. https://ntfy.sh/your-topic
-npx wrangler secret put R2_ACCESS_KEY_ID
-npx wrangler secret put R2_SECRET_ACCESS_KEY
-npx wrangler secret put R2_ACCOUNT_ID         # dashboard → Workers & Pages → right sidebar
-```
-
-No secret ever lives in the repo - `wrangler.jsonc` only contains non-sensitive vars.
-
-`ADMIN_EMAIL` and `ADMIN_PASSWORD` bootstrap the first administrator only when `users` is empty and the durable marker is absent. Only this one-time flow sends `bootstrap_password` alongside the client proof. For migration compatibility, the **exact existing configured password is accepted even if it fails the new password policy**: the account then returns `password_change_required: true`, blocking workspaces, administration and session-based costs until a successful own-password change or reset. A policy-compliant bootstrap password sets the flag to `false`. Bootstrap atomically assigns ownerless shares/requests. Environment values remain startup requirements but are **never a reset or login fallback after bootstrap**. New passwords still use the browser's 8–128-character/common-password policy and 600,000-iteration derivation.
-
-**Protect `SESSION_SECRET`:** generate at least 32 random bytes (the command above produces 64 hex characters). Runtime checks only a minimum length of 32 characters, not entropy. It is the credential root for HKDF-derived HMAC peppering and rate-limit pseudonyms, **not a login-cookie signing key**. Rotation invalidates stored account verifiers and requires controlled account resets; do not casually rotate it to revoke sessions. See [credential-root recovery](docs/USER-MANAGEMENT.md#credential-root-and-rotation).
+**Automation token:** `API_BEARER_TOKEN` is an optional global file-management credential, not a per-user key. It can access all workspaces through `/api/v1/`, including downloads and deletion, but cannot administer user accounts. Account disablement and session/password changes do not revoke it. Keep it in trusted server-side tools or leave it unset; see [API credential boundaries](docs/API.md).
 
 The first-party browser enforces new-password length/common-password rejection. The Worker validates only fixed-format 256-bit proofs on normal account endpoints and cannot attest password quality or that a malicious client performed PBKDF2. Proofs are **replayable password equivalents**: use TLS and never log them or put them in URLs, local/session storage or caches. D1 stores peppered HMAC verifiers, not proofs; protection against offline guessing from a D1-only leak depends on keeping the credential root separate.
 
-> **Privacy note on notifications:** upload/download notifications include the recipient's IP address, country, and user agent. If you set `NTFY_URL`, use a private topic (long random name) or a self-hosted ntfy server - on a public ntfy.sh topic anyone who guesses the name can read those details. Download events are also kept in the dashboard's per-share log and pruned with share history after `HISTORY_RETENTION_DAYS`.
+> **Notification privacy:** ntfy upload/download push messages include the recipient's IP address, country and user agent; transactional emails **do not include these visitor details**. If you set `NTFY_URL`, use a private topic (long random name) or a self-hosted server—anyone who guesses a public ntfy.sh topic can read its messages. Download events are also kept in the per-share dashboard log and pruned with share history after `HISTORY_RETENTION_DAYS`.
 
-### 4. Set your domain and deploy
+## Connect transactional mail
 
-Edit `wrangler.jsonc`: paste your D1 `database_id` and set `vars.PUBLIC_ORIGIN` to your hostname. By default the Worker deploys to `itransfer.<your-subdomain>.workers.dev`; for a custom domain set `"workers_dev": false` and add a `routes` entry (example in the file). Then:
+**No SMTP connection or credentials in iTransfer.** The Worker calls the mailer's HTTPS API using an **app-scoped bearer key**. SMTP usernames, passwords and connection settings belong only to the separately operated mail service; never publish them or copy them into iTransfer. The mailer receives recipient/message metadata and plain-text content, including setup links when applicable—not uploaded files.
 
-```bash
-npm install && cd frontend && npm install && cd ..
-npm run deploy
+The integration uses `POST /v1/emails`, `Authorization: Bearer <app-key>` and a stable `Idempotency-Key` header with JSON `{to, subject, text, expires_at}`. Grant the service app **raw-mail permission** and review its allowed-recipient restrictions. Catalog access alone does not establish send permission. iTransfer sends **no `html` field or template IDs**: the canonical templates currently also generate HTML without a plain-text-only switch, so message copy is authored locally.
+
+Create a protected, gitignored `transactional.key` file containing these two assignments (replace the placeholder privately):
+
+```dotenv
+TRANSACTIONAL_MAIL_API_URL=https://mailer.example.com
+TRANSACTIONAL_MAIL_API_KEY=<your-app-scoped-key>
 ```
 
-Prefer to keep your instance config out of git? Copy `wrangler.jsonc` to `wrangler.local.jsonc` (gitignored), put your real values there, and pass it through npm: `npm run deploy -- -c wrangler.local.jsonc` (works for `dev` and `db:migrate:*` too). Same idea for CORS: `r2-cors.local.json`.
+The URL must be an HTTPS **origin only**, without an endpoint path. Keep both settings server-side, using Worker secrets or protected local configuration—never browser bundles, `VITE_*` variables, public Wrangler `vars`, or committed examples containing real values. Do not pass raw keys as command-line arguments.
 
-After deployment, the operator must make the first sign-in using the existing configured credentials. If prompted to change the password, enter the old password as the current password and choose a new policy-compliant password; then sign in again. No initial bootstrap reset email is sent. Verify legacy ownership and create a second administrator after the restriction is cleared. Welcome setup links expire after 24 hours; reset links after one hour. Queued mail means accepted, **not delivered**; mail failure does not roll back account creation. Use manual links privately when appropriate, without blindly resending uncertain submissions.
+```bash
+npm run mail:configure
+# Production only: explicitly update remote secrets using your private config
+npm run mail:configure -- --remote --config wrangler.local.jsonc
+```
 
-### 5. Configure transactional mail
+The default command updates **only local `.dev.vars`**, preserving unrelated secrets and setting mode **0600**. Remote mode updates Worker secrets; it **does not deploy**, send a test email, or prove delivery. Do not use it as a connectivity test. An authenticated `GET /v1/templates` can check key/catalog access without sending mail, but proves neither raw-mail permission nor inbox delivery.
 
-Use `TRANSACTIONAL_MAIL_API_URL=https://mailer.example.com` (HTTPS **origin only**, no endpoint path) and `TRANSACTIONAL_MAIL_API_KEY` as Worker-side secrets. The service app must allow raw mail: iTransfer sends `{to,subject,text,expires_at}`, **never HTML**. Local plain-text copy implements canonical event semantics without invoking provider template IDs, since all canonical templates generate HTML and have no format flag.
+For a fresh install, run the local helper **before the first deployment with initial secrets**, as described in the [installation guide](docs/INSTALLATION.md). For an already deployed Worker, use the explicit remote command to enable or rotate the connection. This adapter targets the documented Mailer API and its app-key format; an SMTP password, or an arbitrary Resend/SendGrid token, is not a compatible substitute.
 
-Put the two env-style assignments in a gitignored private `transactional.key` file. `npm run mail:configure` runs `scripts/configure-mail.mjs` and defaults to updating local `.dev.vars` with mode `0600`, preserving unrelated secrets. See [configuration and rotation](docs/USER-MANAGEMENT.md#mail-configuration-and-key-rotation).
-
-`--remote` explicitly updates Worker secrets via secret bulk; it is **not deployment** and must not be used as a connectivity test. Local configuration and authenticated `GET /v1/templates` can verify key/catalog access without sending real mail; neither proves delivery. Mail keys normally rotate every 90 days with overlap. They are unrelated to the credential-root `SESSION_SECRET`: never change that root during mail-key rotation.
-
-**Production release, 2026-09-08:** authorized maintenance cutover and minified application deployment completed on both configured origins, with Workers Free unchanged. Migrations **0004–0007 are deployed and immutable**; existing record counts were preserved after backup/restore-integrity checks. Existing secrets, including the credential root, were retained; the two mail settings were installed remotely. Local validation passed **97 backend tests, 51 browser scenarios, typecheck and build**; lint had zero errors and one existing Fast Refresh warning. Live health/readiness and authorization probes passed. First administrator sign-in remained outstanding at the release check; no production credentials were retrieved and no real email was sent. [Detailed CPU observations](docs/USER-MANAGEMENT.md#release-status-2026-09-08) are limited evidence, not a workload guarantee.
+Mail keys normally rotate every **90 days**, with overlap coordinated with the mail service's queue. They are unrelated to **`SESSION_SECRET`—never rotate the account credential root as part of mail-key maintenance**. See [configuration, rotation and submission recovery](docs/USER-MANAGEMENT.md#mail-configuration-and-key-rotation).
 
 ## Local development
 
+Use a reviewed `wrangler.local.jsonc` as described in the [installation guide](docs/INSTALLATION.md). If `.dev.vars` already exists, **preserve it** and review it privately; do not copy the example over existing credentials. Only when creating the file for the first time:
+
 ```bash
-cp .dev.vars.example .dev.vars     # fill in values
-npm run db:migrate:local
-npm run dev                        # Worker on :8787
-cd frontend && npm run dev         # Vite on :5173, proxies /api → :8787
+test ! -e .dev.vars && test ! -L .dev.vars && install -m 600 .dev.vars.example .dev.vars
 ```
 
-Note: presigned URLs always point at real R2, so uploads/downloads require valid `R2_*` credentials even in local dev. Everything else (auth, shares/requests CRUD) works fully offline against the local D1.
+Fill the new file privately, then start the Worker:
+
+```bash
+npm run build:frontend
+npm run db:migrate:local -- -c wrangler.local.jsonc
+npm run dev -- -c wrangler.local.jsonc     # Worker on :8787
+```
+
+In a second terminal at the repository root:
+
+```bash
+npm --prefix frontend run dev              # Vite on :5173, proxies /api to :8787
+```
+
+Note: presigned URLs always point at real R2, so uploads/downloads require valid `R2_*` credentials even in local dev. Account and share/request metadata use local D1, but configured mail and ntfy integrations still make external requests. Use isolated test services or leave them unconfigured to avoid real notifications.
 
 ### Tests
 

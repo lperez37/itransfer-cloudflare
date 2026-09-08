@@ -4,6 +4,8 @@
 
 Implementation sources: [`accounts.ts`](../src/lib/accounts.ts), [session authorization](../src/lib/auth.ts), [auth routes](../src/routes/auth.ts), [user routes](../src/routes/users.ts), [workspace authorization](../src/lib/workspace.ts), and [hourly cleanup](../src/scheduled.ts). See also the [README](../README.md) and [API reference](API.md).
 
+For a fresh deployment, follow the ordered [first-time installation guide](INSTALLATION.md). This runbook covers ongoing administration, security details, upgrades and recovery.
+
 ## Roles and workspaces
 
 - `user`: manage only their own shares, requests and files. Ownership is checked server-side, including file and multipart operations, not merely hidden in the UI.
@@ -78,7 +80,7 @@ The Worker posts to `/v1/emails` with bearer authentication, JSON and a stable i
 
 The transport freezes the body, token, expiry and key across **one bounded retry**, **4.5 seconds per attempt**, for network/timeout/5xx uncertainty. Rejection is not permission to generate a fresh key and resend. `unknown` may already be queued; investigate instead. Queue expiry is capped at 15 minutes and before token expiry with a margin; this is separate from the account's 24-hour/one-hour link lifetime.
 
-The provider queues durably, but **iTransfer has no local outbox**. Account creation/reset commits before mail submission; failure never rolls it back. A crash between commit and POST cannot recover a frozen body locally: an admin must deliberately issue a fresh link, invalidating the old one. A still-valid returned URL supports trusted manual delivery. Invalid `PUBLIC_ORIGIN` may yield a null setup URL; correct configuration instead of making arbitrary links.
+The provider queues durably, but **iTransfer has no local outbox**. Account creation/reset commits before mail submission; failure never rolls it back. A crash between commit and POST cannot recover a frozen body locally: an admin must deliberately issue a fresh link, invalidating the old one. A still-valid returned URL supports trusted manual delivery. Invalid `PUBLIC_ORIGIN` returns 503 before account creation or token/session changes. The UI also refuses to copy a missing or malformed fallback URL; correct configuration instead of making arbitrary links.
 
 ## Mail configuration and key rotation
 

@@ -49,14 +49,15 @@
 	},
 	// Non-secret configuration. Secrets (SESSION_SECRET, ADMIN_EMAIL,
 	// ADMIN_PASSWORD, API_BEARER_TOKEN, NTFY_URL, R2_ACCESS_KEY_ID,
-	// R2_SECRET_ACCESS_KEY, R2_ACCOUNT_ID) are set with `wrangler secret put`
-	// - see README.md.
+	// R2_SECRET_ACCESS_KEY, R2_ACCOUNT_ID, TRANSACTIONAL_MAIL_API_URL,
+	// TRANSACTIONAL_MAIL_API_KEY) use Worker secrets, never vars.
+	// See docs/INSTALLATION.md for atomic first deployment with a private secret file.
 	"vars": {
 		// The public URL of your deployment - used to build share links.
 		"PUBLIC_ORIGIN": "https://itransfer.example.com",
 		"R2_BUCKET_NAME": "itransfer-files",
 		"DEFAULT_EXPIRY_DAYS": "365",
-		// How long an admin login session stays valid.
+		// How long an account login session stays valid.
 		"SESSION_MAX_AGE_DAYS": "90",
 		// Deleted/expired rows are kept as dashboard history for this many
 		// days, then purged by the hourly cron. 0 keeps history forever.
