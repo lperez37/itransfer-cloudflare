@@ -1,4 +1,7 @@
 {
+  "common.showPassword": "Mostra la contrasenya",
+  "common.hidePassword": "Amaga la contrasenya",
+
   "notFound.title": "No trobat",
   "notFound.description": "Aquest enllaç no existeix o ha estat eliminat.",
 

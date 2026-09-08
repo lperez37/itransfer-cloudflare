@@ -1,4 +1,7 @@
 {
+  "common.showPassword": "Wachtwoord tonen",
+  "common.hidePassword": "Wachtwoord verbergen",
+
   "notFound.title": "Niet gevonden",
   "notFound.description": "Deze link bestaat niet of is verwijderd.",
 

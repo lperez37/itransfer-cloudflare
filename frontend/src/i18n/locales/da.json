@@ -1,4 +1,7 @@
 {
+  "common.showPassword": "Vis adgangskode",
+  "common.hidePassword": "Skjul adgangskode",
+
   "notFound.title": "Ikke fundet",
   "notFound.description": "Dette link findes ikke eller er blevet fjernet.",
 

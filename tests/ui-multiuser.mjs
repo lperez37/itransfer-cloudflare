@@ -4,6 +4,8 @@
  * Requires Playwright + Chromium and frontend dependencies. Starts local Vite.
  * Optional: UI_BASE_URL (existing Vite server), PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH.
  * UI_SCREENSHOT_DIR optionally captures final Users/Costs desktop/mobile images.
+ * Password screenshots default to /tmp/opencode/itransfer-password-toggle;
+ * UI_SCREENSHOT_DIR (or SCREENSHOT_DIR) overrides that directory.
  */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -165,6 +167,7 @@ async function scenario(name, run, width = 1400) {
     invitationsIssued: 0,
     recoveryOverride: null,
     preferences: new Map(),
+    publicRequest: false,
   };
   page.on("pageerror", (error) => errors.push(error.message));
   const matching = (path) => calls.filter((call) => call.path === path);
@@ -225,6 +228,24 @@ async function scenario(name, run, width = 1400) {
         }
         state.preferences.set(target, preferences);
         data = preferences;
+      }
+    } else if (path.startsWith("/api/public/")) {
+      // Only these read-only fixtures are supported; never unlock or upload.
+      status = 404;
+      data = { detail: "Not found" };
+      if (method === "GET" && path === "/api/public/shares/visible-test" && !state.publicRequest) {
+        status = 200;
+        data = {
+          id: "visible-test", title: "Protected test share", file_count: 1,
+          files: [], password_required: true, expires_at: "2099-01-01T00:00:00Z",
+          downloads_remaining: 5,
+        };
+      } else if (method === "GET" && path === "/api/public/requests/visible-test" && state.publicRequest) {
+        status = 200;
+        data = {
+          title: "Protected test request", password_required: true,
+          remaining_uploads: 5, expires_at: "2099-01-01T00:00:00Z", files: [],
+        };
       }
     } else if (path === "/api/auth/me") {
       data = state.identity || { detail: "Not authenticated" };
@@ -458,8 +479,86 @@ async function scenario(name, run, width = 1400) {
 }
 
 async function confirm(page, password = "correct-password") {
-  await page.getByLabel("Your password").fill(password);
+  await page.getByLabel("Your password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Confirm and continue" }).click();
+}
+
+async function checkToggle(input, showLabel, calls, hideLabel = showLabel.replace(/^Show/, "Hide")) {
+  const page = input.page();
+  await input.waitFor();
+  assert.equal(await input.getAttribute("type"), "password", "Masked on mount");
+  const id = await input.getAttribute("id");
+  assert(id, "Password input has an explicit id");
+  const button = page.getByRole("button", { name: showLabel, exact: true });
+  assert.equal(await button.count(), 1);
+  assert.equal(await button.getAttribute("aria-controls"), id);
+  assert.equal(await button.getAttribute("type"), "button");
+  assert.equal(await button.getAttribute("title"), showLabel);
+  assert.equal(await button.getAttribute("aria-pressed"), null);
+  assert.equal(await input.evaluate((el) =>
+    [...el.labels].some((label) => label.htmlFor === el.id && !label.querySelector("button")),
+  ), true, "Explicit field label must not contain the toggle");
+  const attributes = await input.evaluate((el) =>
+    Object.fromEntries(["id", "name", "required", "minlength", "maxlength", "autocomplete", "placeholder", "aria-describedby"]
+      .map((name) => [name, el.getAttribute(name)])),
+  );
+  const mutations = () => calls.filter((call) => !["GET", "HEAD", "OPTIONS"].includes(call.method)).length;
+  const before = mutations();
+  const storage = await page.evaluate(() => ({ local: { ...localStorage }, session: { ...sessionStorage } }));
+  await page.evaluate(() => {
+    window.passwordToggleSubmits = 0;
+    window.passwordToggleSubmitListener = () => window.passwordToggleSubmits++;
+    document.addEventListener("submit", window.passwordToggleSubmitListener, true);
+  });
+  const original = await input.elementHandle();
+  const value = "Toggle fixture passphrase 2026";
+  await input.fill(value);
+  await input.evaluate((el) => { el.focus(); el.setSelectionRange(2, 5); });
+  await button.click();
+  const hiddenAction = page.getByRole("button", { name: hideLabel, exact: true });
+  await hiddenAction.waitFor();
+  assert.equal(await input.getAttribute("type"), "text");
+  assert.equal(await input.inputValue(), value);
+  assert.equal(await input.evaluate((el, node) => el.isSameNode(node), original), true);
+  assert.deepEqual(await input.evaluate((el) => [document.activeElement === el, el.selectionStart, el.selectionEnd]), [true, 2, 5]);
+  assert.equal(await hiddenAction.getAttribute("title"), hideLabel);
+  assert.equal(await hiddenAction.getAttribute("aria-pressed"), null);
+  // Tab must reach the action; keyboard activation must keep focus there.
+  await page.keyboard.press("Tab");
+  assert.equal(await hiddenAction.evaluate((el) => document.activeElement === el), true);
+  await page.keyboard.press("Space");
+  await button.waitFor();
+  assert.equal(await input.getAttribute("type"), "password");
+  assert.equal(await button.evaluate((el) => document.activeElement === el), true);
+  await page.keyboard.press("Enter");
+  await hiddenAction.waitFor();
+  assert.equal(await input.getAttribute("type"), "text");
+  assert.equal(await hiddenAction.evaluate((el) => document.activeElement === el), true);
+  await page.keyboard.press("Space");
+  await button.waitFor();
+  assert.equal(await input.getAttribute("type"), "password");
+  assert.equal(await input.inputValue(), value);
+  assert.equal(await input.evaluate((el, node) => el.isSameNode(node), original), true);
+  assert.deepEqual(await input.evaluate((el, names) =>
+    Object.fromEntries(names.map((name) => [name, el.getAttribute(name)])), Object.keys(attributes)), attributes);
+  const geometry = await button.evaluate((el) => {
+    const field = document.getElementById(el.getAttribute("aria-controls"));
+    const b = el.getBoundingClientRect();
+    const i = field.getBoundingClientRect();
+    return {
+      width: b.width, height: b.height,
+      inside: b.left >= i.left && b.right <= i.right + 1 && b.top >= i.top - 1 && b.bottom <= i.bottom + 1,
+      reserved: parseFloat(getComputedStyle(field).paddingRight) >= i.right - b.left,
+    };
+  });
+  assert(geometry.width >= 44 && geometry.height >= 40, "Toggle has a usable pointer target");
+  assert(geometry.inside && geometry.reserved, "Toggle is inside the input with text space reserved");
+  assert.equal(await page.evaluate(() => window.passwordToggleSubmits), 0, "Toggling never submits a form");
+  assert.equal(mutations(), before, "Toggling never posts, unlocks, or uploads");
+  assert.deepEqual(await page.evaluate(() => ({ local: { ...localStorage }, session: { ...sessionStorage } })), storage,
+    "Password value and visibility are not persisted");
+  await page.evaluate(() => document.removeEventListener("submit", window.passwordToggleSubmitListener, true));
+  await original.dispose();
 }
 
 async function ownComposer(page) {
@@ -662,6 +761,148 @@ try {
     headless: true,
     executablePath:
       process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined,
+  });
+
+  await scenario("login password toggle preserves typing, focus, semantics, and remount privacy", async ({ page, state, calls }) => {
+    state.identity = null;
+    await page.goto(`${base}/login`);
+    const input = page.getByLabel("Password", { exact: true });
+    await checkToggle(input, "Show password", calls);
+    assert.equal(await input.getAttribute("autocomplete"), "current-password");
+    await page.getByRole("button", { name: "Show password", exact: true }).click();
+    await page.goto(`${base}/set-password#token=setup-token`);
+    await page.getByLabel("New password", { exact: true }).waitFor();
+    await page.goto(`${base}/login`);
+    await input.waitFor();
+    assert.equal(await input.getAttribute("type"), "password");
+    assert.equal(await input.inputValue(), "");
+  });
+
+  for (const setup of [false, true]) {
+    await scenario(`${setup ? "setup" : "account"} password fields toggle independently and preserve validation`, async ({ page, calls }) => {
+      await page.goto(`${base}${setup ? "/set-password#token=setup-token" : "/account"}`);
+      const fields = [
+        ...(!setup ? [["Current password", "Show current password", "current-password"]] : []),
+        ["New password", "Show new password", "new-password"],
+        ["Confirm new password", "Show confirmed password", "new-password"],
+      ];
+      for (const [label, action, autocomplete] of fields) {
+        const input = page.getByLabel(label, { exact: true });
+        await checkToggle(input, action, calls);
+        assert.equal(await input.getAttribute("autocomplete"), autocomplete);
+        assert.equal(await input.evaluate((el) => el.required), true);
+        if (autocomplete === "new-password") {
+          assert.equal(await input.getAttribute("minlength"), "8");
+          assert.equal(await input.getAttribute("maxlength"), "128");
+        }
+      }
+      await page.getByRole("button", { name: "Show new password", exact: true }).click();
+      for (const [label] of fields)
+        assert.equal(await page.getByLabel(label, { exact: true }).getAttribute("type"), label === "New password" ? "text" : "password");
+      assert.equal(await page.getByLabel("New password", { exact: true }).getAttribute("aria-describedby"), "password-hint");
+    });
+  }
+
+  await scenario("confirmation toggle remounts masked and is disabled while reauthentication is pending", async ({ page, state, calls, matching }) => {
+    await page.goto(`${base}/users`);
+    const reset = page.getByRole("article").filter({ hasText: member.email })
+      .getByRole("button", { name: "Reset password", exact: true });
+    await reset.click();
+    const input = page.getByLabel("Your password", { exact: true });
+    await checkToggle(input, "Show password", calls);
+    assert.equal(await input.getAttribute("autocomplete"), "current-password");
+    await page.getByRole("button", { name: "Show password", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click();
+    await reset.click();
+    await input.waitFor();
+    assert.equal(await input.getAttribute("type"), "password");
+    assert.equal(await input.inputValue(), "");
+    const gate = deferred();
+    state.hold.set("/api/auth/reauth", gate);
+    // Reject after release so the destructive admin action never runs.
+    state.deny.set("/api/auth/reauth", { remaining: 1, status: 401, detail: "Test confirmation denied" });
+    await confirm(page);
+    await until(() => matching("/api/auth/reauth").length === 1, "Reauthentication reached its gate");
+    const button = page.getByRole("button", { name: "Show password", exact: true });
+    assert.equal(await input.isDisabled(), true);
+    assert.equal(await button.isDisabled(), true);
+    await button.evaluate((el) => el.click());
+    assert.equal(await input.getAttribute("type"), "password");
+    gate.resolve();
+    await page.getByRole("alert").filter({ hasText: "Test confirmation denied" }).waitFor();
+    assert.equal(await input.isEnabled(), true);
+    assert.equal(await button.isEnabled(), true);
+    assert.equal(matching(`/api/users/${member.id}/reset-password`).length, 0);
+  });
+
+  for (const [path, placeholder] of [
+    ["/upload", "Protect your share with a password"],
+    ["/requests/new", "Protect uploads with a password"],
+  ]) {
+    await scenario(`${path} optional password uses the shared action without creating or uploading`, async ({ page, calls }) => {
+      await page.goto(`${base}${path}`);
+      if (path === "/upload")
+        await page.locator('input[type="file"]').setInputFiles({
+          name: "toggle-fixture.txt", mimeType: "text/plain", buffer: Buffer.from("Mock only"),
+        });
+      await checkToggle(page.getByPlaceholder(placeholder, { exact: true }), "Show password", calls);
+      assert.equal(calls.filter((call) => call.method === "PUT" || call.method === "POST").length, 0);
+    });
+  }
+
+  for (const request of [false, true]) {
+    await scenario(`public ${request ? "request" : "share"} password toggles without unlocking or uploading`, async ({ page, state, calls, matching }) => {
+      state.identity = null;
+      state.publicRequest = request;
+      await page.goto(`${base}/visible-test`);
+      await checkToggle(page.getByLabel(request ? "Password required to upload" : "Password", { exact: true }), "Show password", calls);
+      // Vite's StrictMode replays the resolver's mount effect; the cancelled
+      // first lookup does not continue to the request fallback.
+      assert.equal(matching("/api/public/shares/visible-test").length, 2);
+      assert.equal(matching("/api/public/requests/visible-test").length, request ? 1 : 0);
+      assert.equal(calls.filter((call) => call.method !== "GET").length, 0);
+    });
+  }
+
+  await scenario("Dutch public password action is localized and remains private across reload", async ({ page, context, state, calls }) => {
+    state.identity = null;
+    await context.addInitScript(() => localStorage.setItem("lang", "nl"));
+    await page.goto(`${base}/visible-test`);
+    await page.getByRole("button", { name: "Wachtwoord tonen", exact: true }).waitFor();
+    const input = page.getByLabel("Wachtwoord", { exact: true });
+    await checkToggle(input, "Wachtwoord tonen", calls, "Wachtwoord verbergen");
+    await page.getByRole("button", { name: "Wachtwoord tonen", exact: true }).click();
+    await page.reload();
+    await page.getByRole("button", { name: "Wachtwoord tonen", exact: true }).waitFor();
+    assert.equal(await input.getAttribute("type"), "password");
+    assert.equal(await input.inputValue(), "");
+    assert.deepEqual(await page.evaluate(() => ({ local: { ...localStorage }, session: { ...sessionStorage } })),
+      { local: { lang: "nl" }, session: {} });
+  });
+
+  await scenario("password controls desktop and mobile screenshot batch", async ({ page, state, calls }) => {
+    const directory = process.env.UI_SCREENSHOT_DIR || process.env.SCREENSHOT_DIR || "/tmp/opencode/itransfer-password-toggle";
+    await mkdir(directory, { recursive: true });
+    for (const [name, path, width] of [
+      ["password-login-desktop", "/login", 1400],
+      ["password-account-desktop", "/account", 1400],
+      ["password-modal-desktop", "/users", 1400],
+      ["password-account-mobile", "/account", 390],
+      ["password-public-mobile", "/visible-test", 390],
+    ]) {
+      state.identity = path === "/login" || path === "/visible-test" ? null : admin;
+      await page.setViewportSize({ width, height: 950 });
+      await page.goto(`${base}${path}`);
+      if (path === "/users")
+        await page.getByRole("article").filter({ hasText: member.email })
+          .getByRole("button", { name: "Reset password", exact: true }).click();
+      const label = path === "/account" ? "Show new password" : "Show password";
+      if (width === 390)
+        await checkToggle(page.getByLabel(path === "/account" ? "New password" : "Password", { exact: true }), label, calls);
+      await page.getByRole("button", { name: label, exact: true }).click();
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+      await page.screenshot({ path: resolve(directory, `${name}.png`), fullPage: true, animations: "disabled" });
+    }
   });
 
   await scenario(
@@ -2884,7 +3125,7 @@ try {
       await page
         .getByLabel("New password", { exact: true })
         .fill("new-password-1234");
-      await page.getByLabel("Confirm new password").fill("new-password-1234");
+      await page.getByLabel("Confirm new password", { exact: true }).fill("new-password-1234");
       await page
         .getByRole("button", { name: "Save password", exact: true })
         .click();
@@ -2909,7 +3150,7 @@ try {
       await page
         .getByLabel("New password", { exact: true })
         .fill("new-password-1234");
-      await page.getByLabel("Confirm new password").fill("mismatched-password");
+      await page.getByLabel("Confirm new password", { exact: true }).fill("mismatched-password");
       await page
         .getByRole("button", { name: "Save password", exact: true })
         .click();
@@ -2918,7 +3159,7 @@ try {
           exact: true,
         })
         .waitFor();
-      await page.getByLabel("Confirm new password").fill("new-password-1234");
+      await page.getByLabel("Confirm new password", { exact: true }).fill("new-password-1234");
       await page
         .getByRole("button", { name: "Save password", exact: true })
         .click();
@@ -2946,11 +3187,11 @@ try {
         .getByRole("heading", { name: "Dashboard", exact: true })
         .waitFor();
       await page.getByRole("link", { name: "Account", exact: true }).click();
-      await page.getByLabel("Current password").fill("correct-password");
+      await page.getByLabel("Current password", { exact: true }).fill("correct-password");
       await page
         .getByLabel("New password", { exact: true })
         .fill("new-password-1234");
-      await page.getByLabel("Confirm new password").fill("new-password-1234");
+      await page.getByLabel("Confirm new password", { exact: true }).fill("new-password-1234");
       await page
         .getByRole("button", { name: "Change password and sign out" })
         .click();

@@ -3,6 +3,7 @@ import { useWorkspace } from "../context/workspace";
 import { useUpload, type FileProgress } from "../hooks/useUpload";
 import FileDropzone from "./FileDropzone";
 import ProgressBar from "./ProgressBar";
+import PasswordInput from "./PasswordInput";
 import {
   X,
   File as FileIcon,
@@ -13,8 +14,6 @@ import {
   Settings2,
   Shuffle,
   Cat,
-  Eye,
-  EyeOff,
 } from "lucide-react";
 
 function formatBytes(bytes: number): string {
@@ -67,7 +66,6 @@ export default function UploadPage() {
   const [expiryDays, setExpiryDays] = useState(365);
   const [maxDownloads, setMaxDownloads] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [idFormat, setIdFormat] = useState<"random" | "animals">("animals");
   const [idLength, setIdLength] = useState(10);
 
@@ -417,26 +415,17 @@ export default function UploadPage() {
 
             {/* Password */}
             <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-text-secondary mb-1.5">
+              <label htmlFor="share-password" className="block text-sm font-medium text-text-secondary mb-1.5">
                 Password{" "}
                 <span className="text-text-muted font-normal">(optional)</span>
               </label>
-              <div className="relative">
-                <input
-                  type={showPassword ? "text" : "password"}
+                <PasswordInput
+                  id="share-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="input-field pr-10"
+                  className="input-field"
                   placeholder="Protect your share with a password"
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary transition-colors"
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
             </div>
 
             {/* Link Format */}

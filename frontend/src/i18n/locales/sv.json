@@ -1,4 +1,7 @@
 {
+  "common.showPassword": "Visa lösenord",
+  "common.hidePassword": "Dölj lösenord",
+
   "notFound.title": "Hittades inte",
   "notFound.description": "Den här länken finns inte eller har tagits bort.",
 

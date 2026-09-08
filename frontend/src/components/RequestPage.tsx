@@ -12,6 +12,7 @@ import { useTranslation } from "../i18n";
 import FileDropzone from "./FileDropzone";
 import LanguageSwitcher from "./LanguageSwitcher";
 import ProgressBar from "./ProgressBar";
+import PasswordInput from "./PasswordInput";
 import {
   Loader2,
   AlertTriangle,
@@ -339,12 +340,14 @@ export default function RequestPage({
 
               {req.password_required && (
                 <div className="mb-4">
-                  <label className="block text-sm font-medium text-text-secondary mb-1.5">
+                  <label htmlFor="public-request-password" className="block text-sm font-medium text-text-secondary mb-1.5">
                     <Lock className="w-3.5 h-3.5 inline mr-1" />
                     {t("request.passwordRequired")}
                   </label>
-                  <input
-                    type="password"
+                  <PasswordInput
+                    id="public-request-password"
+                    showLabel={t("common.showPassword")}
+                    hideLabel={t("common.hidePassword")}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="input-field"

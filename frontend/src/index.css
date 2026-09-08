@@ -194,6 +194,11 @@
     color: var(--color-text-muted);
   }
 
+  .password-input::-ms-reveal,
+  .password-input::-ms-clear {
+    display: none;
+  }
+
   .input-field:focus {
     border-color: var(--color-primary);
     box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.15);

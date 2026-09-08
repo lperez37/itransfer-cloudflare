@@ -1,4 +1,7 @@
 {
+  "common.showPassword": "Mostrar palavra-passe",
+  "common.hidePassword": "Ocultar palavra-passe",
+
   "notFound.title": "Não encontrado",
   "notFound.description": "Este link não existe ou foi removido.",
 

@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { auth } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import EmailPreferences from "./EmailPreferences";
+import PasswordInput from "./PasswordInput";
 
 export default function PasswordPage({ setup = false }: { setup?: boolean }) {
   const { user, clearSession } = useAuth();
@@ -125,51 +126,57 @@ export default function PasswordPage({ setup = false }: { setup?: boolean }) {
             </p>
             <form onSubmit={submit} className="space-y-5">
               {!setup && (
-                <label className="block text-sm text-text-secondary">
-                  Current password
-                  <input
+                <div>
+                  <label htmlFor="account-current-password" className="block text-sm text-text-secondary">Current password</label>
+                  <PasswordInput
+                    id="account-current-password"
+                    showLabel="Show current password"
+                    hideLabel="Hide current password"
                     required
-                    type="password"
                     autoComplete="current-password"
                     value={current}
                     onChange={(e) => setCurrent(e.target.value)}
-                    className="input-field mt-2"
+                    wrapperClassName="mt-2"
                     disabled={busy}
                   />
-                </label>
+                </div>
               )}
-              <label className="block text-sm text-text-secondary">
-                New password
-                <input
+              <div>
+                <label htmlFor="account-new-password" className="block text-sm text-text-secondary">New password</label>
+                <PasswordInput
+                  id="account-new-password"
+                  showLabel="Show new password"
+                  hideLabel="Hide new password"
                   required
-                  type="password"
                   minLength={8}
                   maxLength={128}
                   autoComplete="new-password"
                   aria-describedby="password-hint"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="input-field mt-2"
+                  wrapperClassName="mt-2"
                   disabled={busy}
                 />
-              </label>
+              </div>
               <p id="password-hint" className="text-sm text-text-secondary">
                 Use 8 to 128 characters. A long, unique passphrase works well.
               </p>
-              <label className="block text-sm text-text-secondary">
-                Confirm new password
-                <input
+              <div>
+                <label htmlFor="account-confirm-password" className="block text-sm text-text-secondary">Confirm new password</label>
+                <PasswordInput
+                  id="account-confirm-password"
+                  showLabel="Show confirmed password"
+                  hideLabel="Hide confirmed password"
                   required
-                  type="password"
                   minLength={8}
                   maxLength={128}
                   autoComplete="new-password"
                   value={confirm}
                   onChange={(e) => setConfirm(e.target.value)}
-                  className="input-field mt-2"
+                  wrapperClassName="mt-2"
                   disabled={busy}
                 />
-              </label>
+              </div>
               {error && (
                 <div role="alert" className="text-sm text-red-400">
                   <p>{error}</p>

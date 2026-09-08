@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { auth } from "../lib/api";
+import PasswordInput from "./PasswordInput";
 
 export default function ConfirmPassword({
   title,
@@ -71,19 +72,19 @@ export default function ConfirmPassword({
         {description} Confirm with your own password.
       </p>
       <form onSubmit={submit} className="space-y-4">
-        <label className="block text-sm text-text-secondary">
-          Your password
-          <input
+        <div>
+          <label htmlFor="confirm-password" className="block text-sm text-text-secondary">Your password</label>
+          <PasswordInput
+            id="confirm-password"
             autoFocus
             required
-            type="password"
             autoComplete="current-password"
-            className="input-field mt-2"
+            wrapperClassName="mt-2"
             value={password}
             disabled={busy}
             onChange={(e) => setPassword(e.target.value)}
           />
-        </label>
+        </div>
         {error && (
           <p role="alert" className="text-sm text-red-400">
             {error}

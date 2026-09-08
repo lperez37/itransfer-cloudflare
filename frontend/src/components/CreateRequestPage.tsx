@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, type FormEvent } from "react";
 import { useWorkspace } from "../context/workspace";
+import PasswordInput from "./PasswordInput";
 import {
   Loader2,
   Check,
@@ -8,8 +9,6 @@ import {
   Shuffle,
   Cat,
   Inbox,
-  Eye,
-  EyeOff,
 } from "lucide-react";
 
 export default function CreateRequestPage() {
@@ -24,7 +23,6 @@ export default function CreateRequestPage() {
   const [idLength, setIdLength] = useState(10);
   const [allowIncremental, setAllowIncremental] = useState(false);
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [requestLink, setRequestLink] = useState("");
@@ -273,26 +271,17 @@ export default function CreateRequestPage() {
 
           {/* Password */}
           <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1.5">
+            <label htmlFor="request-password" className="block text-sm font-medium text-text-secondary mb-1.5">
               Password{" "}
               <span className="text-text-muted font-normal">(optional)</span>
             </label>
-            <div className="relative">
-              <input
-                type={showPassword ? "text" : "password"}
+              <PasswordInput
+                id="request-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="input-field pr-10"
+                className="input-field"
                 placeholder="Protect uploads with a password"
               />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary transition-colors"
-              >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
           </div>
 
           {/* Link Format */}

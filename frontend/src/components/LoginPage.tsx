@@ -2,6 +2,7 @@ import { useState, useEffect, type FormEvent } from "react";
 import { useAuth } from "../context/AuthContext";
 import { Mail, Lock, Loader2, AlertCircle } from "lucide-react";
 import logoSvg from "../assets/logo.svg";
+import PasswordInput from "./PasswordInput";
 
 export default function LoginPage() {
   const { login, error, notice } = useAuth();
@@ -97,9 +98,8 @@ export default function LoginPage() {
                 Password
               </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
-                <input
-                  type="password"
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted z-10 pointer-events-none" aria-hidden="true" />
+                <PasswordInput
                   id="login-password"
                   required
                   value={password}
