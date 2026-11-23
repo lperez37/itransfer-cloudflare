@@ -1,0 +1,10 @@
+.gradle/
+.kotlin/
+.signing/
+.verify/
+artifacts/
+**/build/
+local.properties
+*.jks
+*.keystore
+*.p12

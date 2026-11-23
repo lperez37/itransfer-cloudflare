@@ -147,14 +147,14 @@ export default function UsersPage() {
         </button>
       </div>
       {notice && (
-        <p role="status" className="text-sm text-emerald-400">
+        <p role="status" className="text-sm text-success">
           {notice}
         </p>
       )}
       {error && (
         <div
           role="alert"
-          className="text-sm text-red-400 flex flex-wrap gap-3 items-center"
+          className="text-sm text-danger flex flex-wrap gap-3 items-center"
         >
           {error}
           <button className="btn-secondary" onClick={load}>

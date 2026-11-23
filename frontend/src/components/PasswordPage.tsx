@@ -100,7 +100,7 @@ export default function PasswordPage({ setup = false }: { setup?: boolean }) {
         )}
         {success ? (
           <div className="mt-5 space-y-4">
-            <p role="status" className="text-emerald-400">
+            <p role="status" className="text-success">
               Your password is saved. Sign in to open your private workspace.
             </p>
             <Link className="btn-primary inline-block" to="/login">
@@ -178,7 +178,7 @@ export default function PasswordPage({ setup = false }: { setup?: boolean }) {
                 />
               </div>
               {error && (
-                <div role="alert" className="text-sm text-red-400">
+                <div role="alert" className="text-sm text-danger">
                   <p>{error}</p>
                   {setup && (
                     <p className="mt-2">

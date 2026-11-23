@@ -60,7 +60,7 @@ export default function ConfirmPassword({
         e.preventDefault();
         if (!busy) onCancel();
       }}
-      className="m-auto w-[calc(100%-2rem)] max-w-md surface rounded-lg p-6 text-text-primary backdrop:bg-black/70"
+      className="m-auto w-[calc(100%-2rem)] max-w-md surface rounded-lg p-6 text-text-primary backdrop:bg-background/75"
     >
       <h2 id="confirm-title" className="text-xl font-semibold">
         {title}
@@ -86,7 +86,7 @@ export default function ConfirmPassword({
           />
         </div>
         {error && (
-          <p role="alert" className="text-sm text-red-400">
+          <p role="alert" className="text-sm text-danger">
             {error}
           </p>
         )}
