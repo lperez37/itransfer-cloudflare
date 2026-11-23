@@ -8,31 +8,66 @@ The web app and API run on **Cloudflare Workers**. **D1** stores account and tra
 
 [Deploy your own instance](docs/INSTALLATION.md) · [Build an Android APK for your instance](android/README.md#build-locally)
 
-![Dashboard](docs/screenshots/dashboard.png)
+## Screenshots
+
+### Android app
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/share-public.png" alt="Public share download page"></td>
-    <td width="50%"><img src="docs/screenshots/request-public.png" alt="Public file request upload page"></td>
+    <th scope="col">Shares</th>
+    <th scope="col">Requests</th>
+    <th scope="col">Multi-select</th>
   </tr>
   <tr>
-    <td align="center"><em>Recipients download from a clean public page</em></td>
-    <td align="center"><em>File requests let others send you files</em></td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="docs/screenshots/upload.png" alt="Upload page with share settings"></td>
-    <td width="50%"><img src="docs/screenshots/share-detail.png" alt="Share detail page with download log"></td>
-  </tr>
-  <tr>
-    <td align="center"><em>Expiry, download limits, passwords, link format</em></td>
-    <td align="center"><em>Per-share stats and download log</em></td>
+    <td width="33%"><a href="docs/screenshots/android-shares.png"><img src="docs/screenshots/android-shares.png" alt="Android Shares in light mode, with a folded paper plane above the transfer list"></a></td>
+    <td width="33%"><a href="docs/screenshots/android-requests.png"><img src="docs/screenshots/android-requests.png" alt="Android Requests in dark mode, with an open envelope above incoming file requests"></a></td>
+    <td width="33%"><a href="docs/screenshots/android-multiselect.png"><img src="docs/screenshots/android-multiselect.png" alt="Android Shares with two transfers selected and the bulk action bar visible"></a></td>
   </tr>
 </table>
+
+At the top of either list, pull down and release to refresh. To select multiple transfers, press and hold the first one, then tap the others.
+
+### Web app
+
+<table>
+  <tr>
+    <th scope="col">Shares</th>
+    <th scope="col">Requests</th>
+  </tr>
+  <tr>
+    <td width="50%"><a href="docs/screenshots/dashboard.png"><img src="docs/screenshots/dashboard.png" alt="Web dashboard in light mode showing outgoing shares, download counts and expiry dates"></a></td>
+    <td width="50%"><a href="docs/screenshots/web-requests.png"><img src="docs/screenshots/web-requests.png" alt="Web dashboard in dark mode showing incoming file requests and their upload counts"></a></td>
+  </tr>
+</table>
+
+<details>
+<summary>Recipient pages, share creation and download history</summary>
+
+<table>
+  <tr>
+    <th scope="col">Download from a share</th>
+    <th scope="col">Upload to a request</th>
+  </tr>
+  <tr>
+    <td width="50%"><a href="docs/screenshots/share-public.png"><img src="docs/screenshots/share-public.png" alt="Recipient page with a shared PDF and a Download All button"></a></td>
+    <td width="50%"><a href="docs/screenshots/request-public.png"><img src="docs/screenshots/request-public.png" alt="Recipient page with a file drop area and a previously uploaded file"></a></td>
+  </tr>
+  <tr>
+    <th scope="col">Create a share</th>
+    <th scope="col">View download history</th>
+  </tr>
+  <tr>
+    <td width="50%"><a href="docs/screenshots/upload.png"><img src="docs/screenshots/upload.png" alt="Share creation form with files, expiry, password and link settings"></a></td>
+    <td width="50%"><a href="docs/screenshots/share-detail.png"><img src="docs/screenshots/share-detail.png" alt="Share details showing its files, expiry and download log"></a></td>
+  </tr>
+</table>
+
+</details>
 
 ## Features
 
 - **Web and Android apps** follow the device’s light or dark appearance. A folded paper plane marks outgoing shares and an envelope marks file requests. In supported browsers, sign in and choose **Install** on the dashboard.
-- **Android 0.4.1** runs on Android 8.0 and later. At the top of **Shares** or **Requests**, pull down and release to refresh. To select several transfers, press and hold the first one, then tap the others. [Android guide](android/README.md#shares-and-requests)
+- **Android 0.4.1** runs on Android 8.0 and later. [Android guide](android/README.md#shares-and-requests)
 - **Shares** - upload files, get a link. Optional title, password, expiry, max downloads.
 - **File requests** - ask others to send you files, with optional password, size limit, upload limit and incremental mode.
 - **Human-friendly URLs** - `your.domain/fox-cat-bear` (3-word animal combos) or random tokens.

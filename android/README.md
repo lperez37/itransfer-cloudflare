@@ -1,6 +1,6 @@
 # iTransfer for Android
 
-The native iTransfer app uses Kotlin and Jetpack Compose. Each APK connects to the iTransfer server chosen at build time. Install the signed APK from your instance administrator, or build one for your own deployment. [Server setup guide](../docs/INSTALLATION.md)
+The native iTransfer app uses Kotlin and Jetpack Compose. Each APK connects to the iTransfer server chosen at build time. Install the signed APK from your instance administrator, or build one for your own deployment. [Server setup guide](../docs/INSTALLATION.md) · [Android screenshots](../README.md#android-app)
 
 The app remembers sign-in across restarts and APK updates. It encrypts the session with Android Keystore and uses the server’s session lifetime, configured for 90 days in this repository. Signing out or invalidating a session on the server ends that sign-in.
 
