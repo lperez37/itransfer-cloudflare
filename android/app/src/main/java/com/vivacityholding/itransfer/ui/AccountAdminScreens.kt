@@ -167,7 +167,7 @@ internal fun AccountUsersScreen(
                                 SupportingText(user.email, small = true)
                                 AccountUserStatus(user)
                             }
-                            Icon(Icons.AutoMirrored.Rounded.ArrowForward, contentDescription = null, tint = Mocha.secondaryText)
+                            Icon(Icons.AutoMirrored.Rounded.ArrowForward, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -308,9 +308,9 @@ internal fun AccountUsersScreen(
 @Composable
 private fun AccountUserStatus(user: AccountUser) {
     val color = when (user.status) {
-        AccountStatus.ACTIVE -> Mocha.green
-        AccountStatus.PENDING -> Mocha.yellow
-        AccountStatus.DISABLED -> Mocha.secondaryText
+        AccountStatus.ACTIVE -> MaterialTheme.colorScheme.secondary
+        AccountStatus.PENDING -> MaterialTheme.colorScheme.tertiary
+        AccountStatus.DISABLED -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     Text("${user.role.label} · ${user.status.label}", color = color, style = MaterialTheme.typography.bodySmall)
 }

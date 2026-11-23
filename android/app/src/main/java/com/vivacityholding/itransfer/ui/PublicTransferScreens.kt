@@ -659,7 +659,7 @@ private fun PublicRequestScreen(
                 Panel {
                     Text(
                         language.text("request.filesUploaded"),
-                        color = Mocha.green,
+                        color = MaterialTheme.colorScheme.secondary,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                     )
@@ -785,11 +785,11 @@ private fun PublicUploadProgress(progress: UploadProgress, cancel: () -> Unit) {
         )
         if (progress.phase == UploadPhase.UPLOADING && progress.totalBytes > 0L) {
             val fraction = (progress.sentBytes.toDouble() / progress.totalBytes).coerceIn(0.0, 1.0).toFloat()
-            LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth(), trackColor = Mocha.surface)
+            LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth(), trackColor = MaterialTheme.colorScheme.surfaceContainerHigh)
             SupportingText("${language.size(progress.sentBytes)} / ${language.size(progress.totalBytes)}", small = true)
             progress.currentFile?.let { Text(it, maxLines = 2, overflow = TextOverflow.Ellipsis) }
         } else {
-            LinearProgressIndicator(Modifier.fillMaxWidth(), trackColor = Mocha.surface)
+            LinearProgressIndicator(Modifier.fillMaxWidth(), trackColor = MaterialTheme.colorScheme.surfaceContainerHigh)
         }
         SupportingText(language.text("request.keepOpen"), small = true)
         if (progress.phase != UploadPhase.CONFIRMING) OutlinedAction("Cancel upload", cancel)
@@ -868,8 +868,8 @@ private fun PublicFileRow(
     val selectable = if (selected == null) Modifier else Modifier.toggleable(selected, role = Role.Checkbox, onValueChange = onSelect)
     Surface(
         shape = RoundedCornerShape(14.dp),
-        color = Mocha.mantle,
-        border = BorderStroke(1.dp, if (selected == true) Mocha.lavender else Mocha.border),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, if (selected == true) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().then(selectable).padding(horizontal = 14.dp, vertical = 9.dp),
@@ -882,7 +882,7 @@ private fun PublicFileRow(
                 size?.let { SupportingText(language.size(it), small = true) }
             }
             if (onRemove != null) IconButton(onClick = onRemove) {
-                Icon(Icons.Rounded.Close, contentDescription = "Remove $name", tint = Mocha.secondaryText)
+                Icon(Icons.Rounded.Close, contentDescription = "Remove $name", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

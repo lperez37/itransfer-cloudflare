@@ -5,7 +5,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,7 +16,6 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
@@ -45,9 +43,11 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -57,6 +57,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.contentColorFor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableIntState
@@ -71,10 +72,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -83,7 +81,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
@@ -116,8 +113,8 @@ import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 
 private val screenGutter = 20.dp
-private val cardShape = RoundedCornerShape(22.dp)
-private val actionShape = RoundedCornerShape(16.dp)
+private val cardShape = RoundedCornerShape(20.dp)
+private val actionShape = RoundedCornerShape(14.dp)
 private const val MIN_SHARE_LINK_LENGTH = 4
 private const val DEFAULT_SHARE_LINK_LENGTH = 16
 
@@ -192,7 +189,7 @@ internal fun TransferApp(
     }
 
     TransferTheme {
-        Surface(Modifier.fillMaxSize(), color = Mocha.crust) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Box(
                 modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).imePadding(),
                 contentAlignment = Alignment.TopCenter,
@@ -205,7 +202,7 @@ internal fun TransferApp(
                             modifier = Modifier.fillMaxWidth().semantics {
                                 contentDescription = "Saving download"
                             },
-                            trackColor = Mocha.surface,
+                            trackColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                         )
                     }
                     when {
@@ -306,7 +303,7 @@ internal fun TransferApp(
                             model.selectWorkspace(change.target, change.manage)
                             workspaceChange = null
                             accountOpen = false
-                        }) { Text("Switch and discard draft", color = Mocha.red) }
+                        }) { Text("Switch and discard draft", color = MaterialTheme.colorScheme.error) }
                     },
                 )
             }
@@ -349,19 +346,17 @@ private fun LoginScreen(state: TransferUiState, signIn: (String, String) -> Unit
 
     BrandHeader()
     Column(
-        modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(screenGutter),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
+        modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = screenGutter, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        TransferArtwork(Modifier.align(Alignment.CenterHorizontally).size(170.dp, 116.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Title("Sign in to iTransfer")
-            SupportingText("Use your existing iTransfer account.")
+        TransferCover("Sign in") {
+            Text("Use your iTransfer account.", color = Color.White, style = MaterialTheme.typography.bodyMedium)
         }
         if (state.files.isNotEmpty()) {
             Notice("${fileCountText(state.files.size)} ready to share after sign-in.", error = false)
         }
         state.authError?.let { Notice(it) }
-        Panel {
+        Panel(padding = 20) {
             OutlinedTextField(
                 value = email,
                 onValueChange = { email = it.take(254) },
@@ -381,7 +376,7 @@ private fun LoginScreen(state: TransferUiState, signIn: (String, String) -> Unit
             )
             PrimaryButton(if (state.signingIn) "Signing in…" else "Sign in", submit, enabled = ready)
         }
-        OutlinedAction("Open a share or request link", openPublicLink, enabled = !state.signingIn)
+        OutlinedAction("Open a share or request link", openPublicLink, icon = TransferIcons.Link, enabled = !state.signingIn)
     }
 }
 
@@ -390,8 +385,8 @@ private fun WorkspaceBanner(target: WorkspaceTarget, manage: Boolean, returnToOw
     Surface(
         modifier = Modifier.padding(horizontal = screenGutter),
         shape = actionShape,
-        color = Mocha.base,
-        border = BorderStroke(1.dp, Mocha.border),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
         Column(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 12.dp)) {
             Text(if (manage) "Managing ${target.name}’s workspace" else "Viewing ${target.name}’s workspace", fontWeight = FontWeight.SemiBold)
@@ -519,7 +514,7 @@ private fun DraftScreen(
                 TextButton(onClick = {
                     confirmDraftExit = false
                     model.discardDraft()
-                }) { Text("Discard draft", color = Mocha.red) }
+                }) { Text("Discard draft", color = MaterialTheme.colorScheme.error) }
             },
         )
     }
@@ -532,7 +527,7 @@ private fun DraftScreen(
                 TextButton(onClick = {
                     confirmCancel = false
                     model.cancelUpload()
-                }) { Text("Cancel upload", color = Mocha.red) }
+                }) { Text("Cancel upload", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
                 TextButton(onClick = { confirmCancel = false }) { Text("Keep uploading") }
@@ -543,23 +538,23 @@ private fun DraftScreen(
 
 @Composable
 private fun ShareFilesPicker(files: List<TransferFile>, importing: Boolean, chooseFiles: () -> Unit) {
-    Panel(padding = 12) {
+    val colors = MaterialTheme.colorScheme
+    Surface(onClick = chooseFiles, enabled = !importing, shape = cardShape, color = colors.primaryContainer) {
         Row(
-            Modifier.fillMaxWidth(),
+            Modifier.fillMaxWidth().heightIn(min = 82.dp).padding(horizontal = 18.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            FileTile(Mocha.mauve)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                WorkspaceSectionTitle("Files")
-                SupportingText(
-                    if (files.isEmpty()) "No files added" else "${fileCountText(files.size)} · ${byteSize(files.sumOf { it.size })}",
-                    small = true,
-                )
+            Box(Modifier.size(42.dp).background(colors.primary, CircleShape), contentAlignment = Alignment.Center) {
+                if (importing) CircularProgressIndicator(Modifier.size(20.dp), color = colors.onPrimary, strokeWidth = 2.dp)
+                else Icon(Icons.Rounded.Add, contentDescription = null, tint = colors.onPrimary)
             }
-            TextButton(onClick = chooseFiles, enabled = !importing, modifier = Modifier.heightIn(min = 48.dp)) {
-                Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(17.dp))
-                Text(if (importing) "Reading…" else "Add files", modifier = Modifier.padding(start = 4.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(if (importing) "Reading files…" else "Add files", style = MaterialTheme.typography.titleMedium, color = colors.onPrimaryContainer)
+                Text(
+                    if (files.isEmpty()) "Choose files from this device" else "${fileCountText(files.size)} · ${byteSize(files.sumOf { it.size })}",
+                    style = MaterialTheme.typography.bodySmall, color = colors.onPrimaryContainer,
+                )
             }
         }
     }
@@ -598,20 +593,20 @@ private fun ShareNumberField(value: String, update: (String) -> Unit, label: Str
 
 @Composable
 private fun FileRow(file: TransferFile, canRemove: Boolean, onRemove: () -> Unit) {
-    Surface(shape = actionShape, border = BorderStroke(1.dp, Mocha.border.copy(alpha = 0.72f))) {
+    Surface(shape = actionShape, border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f))) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(start = 12.dp, top = 6.dp, bottom = 6.dp, end = if (canRemove) 3.dp else 12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            FileTile(Mocha.lavender)
+            FileTile(MaterialTheme.colorScheme.primary)
             Column(Modifier.weight(1f)) {
                 Text(file.name, maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Medium)
                 SupportingText(byteSize(file.size), small = true)
             }
             if (canRemove) {
                 IconButton(onClick = onRemove) {
-                    Icon(Icons.Rounded.Close, contentDescription = "Remove ${file.name}", tint = Mocha.secondaryText)
+                    Icon(Icons.Rounded.Close, contentDescription = "Remove ${file.name}", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -641,17 +636,17 @@ private fun UploadCard(progress: UploadProgress) {
             )
             if (determinate) {
                 val percent = if (progress.sentBytes >= progress.totalBytes) 100 else (fraction * 100).toInt().coerceAtMost(99)
-                Text("$percent%", color = Mocha.mauve, fontFamily = FontFamily.Monospace)
+                Text("$percent%", color = MaterialTheme.colorScheme.primary, fontFamily = FontFamily.Monospace)
             }
         }
         if (determinate) {
-            LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth(), trackColor = Mocha.surface)
+            LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth(), trackColor = MaterialTheme.colorScheme.surfaceContainerHigh)
             SupportingText("${byteSize(progress.sentBytes)} of ${byteSize(progress.totalBytes)}", small = true)
         } else {
-            LinearProgressIndicator(Modifier.fillMaxWidth(), trackColor = Mocha.surface)
+            LinearProgressIndicator(Modifier.fillMaxWidth(), trackColor = MaterialTheme.colorScheme.surfaceContainerHigh)
         }
         progress.currentFile?.let {
-            Text(it, color = Mocha.secondaryText, overflow = TextOverflow.Ellipsis, maxLines = 2)
+            Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, overflow = TextOverflow.Ellipsis, maxLines = 2)
         }
     }
 }
@@ -686,28 +681,30 @@ private fun ResultScreen(
 @Composable
 private fun BrandHeader(account: Account? = null, openPublicLink: (() -> Unit)? = null, showAccount: () -> Unit = {}) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(start = screenGutter, end = screenGutter, top = 6.dp, bottom = 8.dp),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 60.dp).padding(horizontal = screenGutter, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(11.dp),
     ) {
         BrandMark()
-        Text("iTransfer", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, fontSize = 23.sp, letterSpacing = (-0.55).sp)
-        if (openPublicLink != null) TransferIconButton(TransferIcons.Link, "Open link", openPublicLink, tint = Mocha.lavender)
+        Text("iTransfer", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, fontSize = 24.sp, letterSpacing = (-1).sp)
+        if (openPublicLink != null) TransferIconButton(TransferIcons.Link, "Open link", openPublicLink)
         if (account != null) {
-            val initials = account.name.split(Regex("\\s+")).filter(String::isNotBlank).take(2)
-                .joinToString("") { it.take(1).uppercase() }.ifEmpty { account.email.take(1).uppercase() }
-            Surface(
+            IconButton(
                 onClick = showAccount,
                 modifier = Modifier.size(48.dp).semantics { contentDescription = "Account for ${account.name}" },
-                shape = CircleShape,
-                color = Mocha.base,
-                border = BorderStroke(1.dp, Mocha.border),
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(initials, color = Mocha.mauve, fontWeight = FontWeight.Bold, maxLines = 1)
-                }
+                AccountAvatar(account.name, account.email, Modifier.size(38.dp))
             }
         }
+    }
+}
+
+@Composable
+internal fun AccountAvatar(name: String, email: String, modifier: Modifier) {
+    val initials = name.split(Regex("\\s+")).filter(String::isNotBlank).take(2)
+        .joinToString("") { it.take(1).uppercase() }.ifEmpty { email.take(1).uppercase() }
+    Box(modifier.background(MaterialTheme.colorScheme.primaryContainer, CircleShape), contentAlignment = Alignment.Center) {
+        Text(initials, color = MaterialTheme.colorScheme.onPrimaryContainer, fontWeight = FontWeight.Bold, maxLines = 1)
     }
 }
 
@@ -719,11 +716,14 @@ internal fun ScreenHeader(
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = screenGutter, top = 6.dp, bottom = 8.dp),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(start = 14.dp, end = screenGutter, top = 4.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        IconButton(onClick = back, enabled = backEnabled) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back") }
+        FilledTonalIconButton(
+            onClick = back, enabled = backEnabled,
+            colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        ) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", modifier = Modifier.size(20.dp)) }
         Text(
             title,
             modifier = Modifier.weight(1f).semantics { heading() },
@@ -747,7 +747,7 @@ internal fun Title(text: String) {
 
 @Composable
 internal fun SupportingText(text: String, small: Boolean = false) {
-    Text(text, color = Mocha.secondaryText, style = if (small) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium)
+    Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant, style = if (small) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium)
 }
 
 @Composable
@@ -755,8 +755,7 @@ internal fun Panel(padding: Int = 16, content: @Composable ColumnScope.() -> Uni
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = cardShape,
-        border = BorderStroke(1.dp, Mocha.border.copy(alpha = 0.58f)),
-        color = Mocha.mantle,
+        color = MaterialTheme.colorScheme.surface,
     ) {
         Column(Modifier.padding(padding.dp), verticalArrangement = Arrangement.spacedBy(if (padding == 0) 0.dp else 12.dp), content = content)
     }
@@ -769,14 +768,14 @@ internal fun PrimaryButton(
     icon: ImageVector? = null,
     enabled: Boolean = true,
     modifier: Modifier = Modifier,
-    accent: Color = Mocha.mauve,
+    accent: Color = MaterialTheme.colorScheme.primary,
 ) {
     Button(
         onClick = onClick,
         modifier = modifier.fillMaxWidth().heightIn(min = 52.dp),
         enabled = enabled,
-        shape = actionShape,
-        colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = Mocha.crust),
+        shape = CircleShape,
+        colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = contentColorFor(accent)),
         contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
     ) {
         if (icon != null) Icon(icon, contentDescription = null, modifier = Modifier.padding(end = 8.dp).size(20.dp))
@@ -786,12 +785,16 @@ internal fun PrimaryButton(
 
 @Composable
 internal fun ComposerFooter(content: @Composable ColumnScope.() -> Unit) {
-    HorizontalDivider(color = Mocha.border.copy(alpha = 0.55f))
-    Column(
-        Modifier.fillMaxWidth().padding(horizontal = screenGutter, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        content = content,
-    )
+    Surface(color = MaterialTheme.colorScheme.surface) {
+        Column {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = screenGutter, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                content = content,
+            )
+        }
+    }
 }
 
 @Composable
@@ -801,7 +804,8 @@ internal fun OutlinedAction(label: String, onClick: () -> Unit, icon: ImageVecto
         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
         enabled = enabled,
         shape = actionShape,
-        border = BorderStroke(1.dp, Mocha.border),
+        colors = ButtonDefaults.outlinedButtonColors(containerColor = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
         if (icon != null) Icon(icon, contentDescription = null, modifier = Modifier.padding(end = 8.dp).size(19.dp))
         Text(label, fontWeight = FontWeight.SemiBold)
@@ -811,9 +815,9 @@ internal fun OutlinedAction(label: String, onClick: () -> Unit, icon: ImageVecto
 @Composable
 internal fun Notice(message: String, error: Boolean = true, success: Boolean = false, dismiss: (() -> Unit)? = null) {
     val (color, icon) = when {
-        error -> Mocha.red to Icons.Rounded.Warning
-        success -> Mocha.green to Icons.Rounded.CheckCircle
-        else -> Mocha.lavender to Icons.Rounded.Info
+        error -> MaterialTheme.colorScheme.error to Icons.Rounded.Warning
+        success -> MaterialTheme.colorScheme.secondary to Icons.Rounded.CheckCircle
+        else -> MaterialTheme.colorScheme.primary to Icons.Rounded.Info
     }
     Surface(shape = actionShape, color = color.copy(alpha = 0.09f), border = BorderStroke(1.dp, color.copy(alpha = 0.25f))) {
         Row(
@@ -872,6 +876,7 @@ internal fun FileTile(color: Color) {
 
 @Composable
 private fun EyeGlyph(visible: Boolean, label: String) {
+    val color = MaterialTheme.colorScheme.onSurfaceVariant
     Canvas(Modifier.size(22.dp).semantics { contentDescription = label }) {
         val unit = size.width / 22f
         val eye = Path().apply {
@@ -880,9 +885,9 @@ private fun EyeGlyph(visible: Boolean, label: String) {
             quadraticTo(11 * unit, 20.5f * unit, 2 * unit, 11 * unit)
             close()
         }
-        drawPath(eye, Mocha.secondaryText, style = Stroke(1.4f * unit))
-        drawCircle(Mocha.secondaryText, radius = 2.4f * unit, center = Offset(11 * unit, 11 * unit))
-        if (visible) drawLine(Mocha.secondaryText, Offset(4 * unit, 17.5f * unit), Offset(18 * unit, 4.5f * unit), 1.5f * unit, StrokeCap.Round)
+        drawPath(eye, color, style = Stroke(1.4f * unit))
+        drawCircle(color, radius = 2.4f * unit, center = Offset(11 * unit, 11 * unit))
+        if (visible) drawLine(color, Offset(4 * unit, 17.5f * unit), Offset(18 * unit, 4.5f * unit), 1.5f * unit, StrokeCap.Round)
     }
 }
 
@@ -890,8 +895,8 @@ private fun EyeGlyph(visible: Boolean, label: String) {
 internal fun LinkText(link: String) {
     Text(
         link,
-        Modifier.fillMaxWidth().background(Mocha.crust, actionShape).padding(12.dp),
-        color = Mocha.lavender,
+        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainer, actionShape).padding(14.dp),
+        color = MaterialTheme.colorScheme.primary,
         fontFamily = FontFamily.Monospace,
         style = MaterialTheme.typography.bodySmall,
     )

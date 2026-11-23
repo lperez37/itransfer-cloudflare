@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.AlertDialog
@@ -398,7 +399,7 @@ private fun WorkspaceDetails(
                     WorkspaceStatusBadge(entry.status)
                     Text(
                         entry.id,
-                        color = Mocha.secondaryText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontFamily = FontFamily.Monospace,
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.align(Alignment.CenterVertically),
@@ -412,7 +413,7 @@ private fun WorkspaceDetails(
         if (entry.status.showsLink) {
             item {
                 Panel {
-                    WorkspaceLinkActions(entry.link, copyLink, shareLink, openLink, accent = if (isShare) Mocha.mauve else Mocha.teal)
+                    WorkspaceLinkActions(entry.link, copyLink, shareLink, openLink, accent = if (isShare) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary)
                 }
             }
         }
@@ -541,7 +542,7 @@ private fun WorkspaceRequestSettings(detail: WorkspaceDetail) {
 private fun WorkspaceDetailFileRow(file: WorkspaceFile, download: (() -> Unit)?) {
     Panel(padding = 12) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            FileTile(Mocha.lavender)
+            FileTile(MaterialTheme.colorScheme.primary)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(file.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                 file.size?.let { SupportingText(byteSize(it), small = true) }
@@ -585,15 +586,15 @@ internal fun TransferLinkResult(
     copyLink: (String) -> Unit,
     shareLink: (String) -> Unit,
     openLink: (String) -> Unit,
-    accent: Color = Mocha.mauve,
+    accent: Color = MaterialTheme.colorScheme.primary,
 ) {
     Panel {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(36.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Title("Link ready")
                 SupportingText(summary)
             }
-            TransferArtwork(Modifier.size(82.dp, 64.dp), complete = true)
         }
         WorkspaceLinkActions(link, copyLink, shareLink, openLink, accent)
     }
@@ -617,8 +618,8 @@ private fun WorkspacePurgeDialog(
     }
     AlertDialog(
         onDismissRequest = { if (completed == null) dismiss() },
-        icon = { Icon(Icons.Rounded.Delete, contentDescription = null, tint = Mocha.red) },
-        containerColor = Mocha.base,
+        icon = { Icon(Icons.Rounded.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
         title = { Text("Permanently delete $objectName?") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -638,7 +639,7 @@ private fun WorkspacePurgeDialog(
             Button(
                 onClick = confirm,
                 enabled = completed == null,
-                colors = ButtonDefaults.buttonColors(containerColor = Mocha.red, contentColor = Mocha.crust),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error, contentColor = MaterialTheme.colorScheme.onError),
             ) {
                 Text(if (completed == null) "Delete permanently" else "Deleting…")
             }

@@ -1,7 +1,9 @@
 package com.vivacityholding.itransfer.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -15,8 +17,19 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ExitToApp
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.rounded.List
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.MailOutline
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -32,6 +45,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
@@ -149,25 +163,25 @@ internal fun AccountToolsScreen(
             else -> AccountPage("My Account", onBack) {
                 item { AccountProfile(account, displayName) }
                 item {
-                    Panel {
-                        OutlinedAction("Change password", { section = AccountSection.PASSWORD })
-                        OutlinedAction("Email preferences", { section = AccountSection.PREFERENCES })
+                    Panel(padding = 0) {
+                        AccountAction("Change password", Icons.Rounded.Lock) { section = AccountSection.PASSWORD }
+                        AccountAction("Email preferences", Icons.Rounded.MailOutline) { section = AccountSection.PREFERENCES }
                     }
                 }
                 if (account.isAdmin) {
                     item {
-                        Panel {
-                            AccountHeading("Administration")
-                            OutlinedAction("Users", { section = AccountSection.USERS })
-                            OutlinedAction("Account audit", { section = AccountSection.AUDIT })
-                            OutlinedAction("Costs", { section = AccountSection.COSTS })
+                        Panel(padding = 0) {
+                            Box(Modifier.padding(start = 16.dp, top = 16.dp, bottom = 4.dp)) { AccountHeading("Administration") }
+                            AccountAction("Users", Icons.Rounded.Person) { section = AccountSection.USERS }
+                            AccountAction("Account audit", Icons.AutoMirrored.Rounded.List) { section = AccountSection.AUDIT }
+                            AccountAction("Costs", TransferIcons.Chart) { section = AccountSection.COSTS }
                         }
                     }
                 }
                 item {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedAction("Open iTransfer website", openWebsite)
-                        OutlinedAction("Sign out", onSignOut)
+                    Panel(padding = 0) {
+                        AccountAction("Open iTransfer website", TransferIcons.Link, openWebsite)
+                        AccountAction("Sign out", Icons.AutoMirrored.Rounded.ExitToApp, onSignOut)
                     }
                 }
             }
@@ -177,12 +191,29 @@ internal fun AccountToolsScreen(
 
 @Composable
 private fun AccountProfile(account: Account, displayName: String) {
-    Panel {
-        Title(displayName)
-        SupportingText(account.email)
-        SupportingText(if (account.isAdmin) "Administrator" else "User", small = true)
-        SupportingText("Session expires ${accountTimestamp(account.sessionExpiresAt)}", small = true)
+    Panel(padding = 18) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            AccountAvatar(displayName, account.email, Modifier.size(50.dp))
+            Column(Modifier.weight(1f)) {
+                Text(displayName, Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge)
+                SupportingText(account.email)
+            }
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        val role = if (account.isAdmin) "Administrator" else "User"
+        SupportingText("$role · Session expires ${accountTimestamp(account.sessionExpiresAt)}", small = true)
     }
+}
+
+@Composable
+private fun AccountAction(label: String, icon: ImageVector, onClick: () -> Unit) {
+    ListItem(
+        modifier = Modifier.clickable(role = Role.Button, onClick = onClick),
+        headlineContent = { Text(label, style = MaterialTheme.typography.bodyLarge) },
+        leadingContent = { Icon(icon, null, Modifier.size(21.dp)) },
+        trailingContent = { Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, Modifier.size(18.dp)) },
+        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+    )
 }
 
 @Composable
@@ -499,7 +530,7 @@ internal fun AccountConfirmationDialog(
         },
         confirmButton = { TextButton(submit, enabled = !busy && password.isNotEmpty()) { Text(if (busy) "Confirming…" else "Confirm") } },
         dismissButton = { TextButton(onClose, enabled = !busy) { Text("Cancel") } },
-        containerColor = Mocha.base,
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
     )
 }
 
@@ -553,7 +584,7 @@ internal fun AccountLoading(label: String) {
 internal fun AccountValue(label: String, value: String) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-        Text(value, color = Mocha.lavender, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+        Text(value, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
     }
 }
 

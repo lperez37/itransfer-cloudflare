@@ -2,7 +2,7 @@ package com.vivacityholding.itransfer.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -13,9 +13,11 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Text
+import androidx.compose.material3.Typography
 import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -23,67 +25,77 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathBuilder
 import androidx.compose.ui.graphics.vector.path
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import kotlin.math.min
+import androidx.compose.ui.unit.sp
 
-internal object Mocha {
-    val crust = Color(0xFF11111B)
-    val mantle = Color(0xFF181825)
-    val base = Color(0xFF1E1E2E)
-    val surface = Color(0xFF313244)
-    val border = Color(0xFF45475A)
-    val outline = Color(0xFF6C7086)
-    val text = Color(0xFFCDD6F4)
-    val secondaryText = Color(0xFFA6ADC8)
-    val mauve = Color(0xFFCBA6F7)
-    val lavender = Color(0xFFB4BEFE)
-    val green = Color(0xFFA6E3A1)
-    val teal = Color(0xFF94E2D5)
-    val yellow = Color(0xFFF9E2AF)
-    val red = Color(0xFFF38BA8)
-}
+private val cobalt = Color(0xFF294AC6)
+private val jade = Color(0xFF126958)
+private val ink = Color(0xFF182135)
+private val paper = Color(0xFFF6F6F2)
+private val midnight = Color(0xFF111722)
 
-private val colors = darkColorScheme(
-    primary = Mocha.mauve,
-    onPrimary = Mocha.crust,
-    primaryContainer = Mocha.surface,
-    onPrimaryContainer = Mocha.mauve,
-    secondary = Mocha.lavender,
-    onSecondary = Mocha.crust,
-    tertiary = Mocha.teal,
-    onTertiary = Mocha.crust,
-    background = Mocha.crust,
-    onBackground = Mocha.text,
-    surface = Mocha.mantle,
-    onSurface = Mocha.text,
-    surfaceVariant = Mocha.surface,
-    onSurfaceVariant = Mocha.secondaryText,
-    surfaceContainer = Mocha.base,
-    surfaceContainerHigh = Mocha.surface,
-    outline = Mocha.outline,
-    outlineVariant = Mocha.border,
-    error = Mocha.red,
-    onError = Mocha.crust,
-    errorContainer = Mocha.red.copy(alpha = 0.1f),
-    onErrorContainer = Mocha.red,
+private val dayColors = lightColorScheme(
+    primary = cobalt, onPrimary = Color.White,
+    primaryContainer = Color(0xFFE4E9FF), onPrimaryContainer = Color(0xFF243E96),
+    secondary = jade, onSecondary = Color.White,
+    secondaryContainer = Color(0xFFD9F1E9), onSecondaryContainer = Color(0xFF155344),
+    tertiary = Color(0xFF84510E), onTertiary = Color.White,
+    tertiaryContainer = Color(0xFFFFEAC9), onTertiaryContainer = Color(0xFF5A380D),
+    background = paper, onBackground = ink,
+    surface = Color.White, onSurface = ink,
+    surfaceVariant = Color(0xFFEBEDF1), onSurfaceVariant = Color(0xFF515C6C),
+    surfaceContainerLowest = Color.White, surfaceContainerLow = Color(0xFFFAFAF8),
+    surfaceContainer = Color(0xFFF0F1F3), surfaceContainerHigh = Color(0xFFE7E9EE),
+    surfaceContainerHighest = Color(0xFFDFE3E9),
+    outline = Color(0xFF778190), outlineVariant = Color(0xFFD2D6DC),
+    error = Color(0xFFAD3541), onError = Color.White,
+    errorContainer = Color(0xFFFFDCE0), onErrorContainer = Color(0xFF721F29),
+    inverseSurface = ink, inverseOnSurface = Color.White, inversePrimary = Color(0xFFB4C4FF),
+    surfaceTint = cobalt,
+)
+
+private val nightColors = darkColorScheme(
+    primary = Color(0xFFAFBFFF), onPrimary = midnight,
+    primaryContainer = Color(0xFF2B3C6E), onPrimaryContainer = Color(0xFFDCE3FF),
+    secondary = Color(0xFF88DCC1), onSecondary = midnight,
+    secondaryContainer = Color(0xFF203F39), onSecondaryContainer = Color(0xFFBCF2DF),
+    tertiary = Color(0xFFF2C378), onTertiary = midnight,
+    tertiaryContainer = Color(0xFF4E3D26), onTertiaryContainer = Color(0xFFFFDEAB),
+    background = midnight, onBackground = Color(0xFFEFF2FA),
+    surface = Color(0xFF1C2532), onSurface = Color(0xFFEFF2FA),
+    surfaceVariant = Color(0xFF293342), onSurfaceVariant = Color(0xFFB4BFCE),
+    surfaceContainerLowest = Color(0xFF0D131B), surfaceContainerLow = Color(0xFF19202C),
+    surfaceContainer = Color(0xFF222C3A), surfaceContainerHigh = Color(0xFF2B3747),
+    surfaceContainerHighest = Color(0xFF364252),
+    outline = Color(0xFF8290A3), outlineVariant = Color(0xFF3E4B5C),
+    error = Color(0xFFFFAEB2), onError = midnight,
+    errorContainer = Color(0xFF57323A), onErrorContainer = Color(0xFFFFD9DC),
+    inverseSurface = Color(0xFFE1E6F0), inverseOnSurface = ink, inversePrimary = cobalt,
+    surfaceTint = Color(0xFFAFBFFF),
+)
+
+private val baseType = Typography()
+private val transferType = Typography(
+    headlineLarge = baseType.headlineLarge.copy(fontSize = 38.sp, lineHeight = 43.sp, fontWeight = FontWeight.Bold, letterSpacing = (-1.5).sp),
+    headlineMedium = baseType.headlineMedium.copy(fontWeight = FontWeight.Bold, letterSpacing = (-0.9).sp),
+    titleLarge = baseType.titleLarge.copy(fontSize = 24.sp, lineHeight = 30.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.6).sp),
+    titleMedium = baseType.titleMedium.copy(fontSize = 17.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.25).sp),
+    bodySmall = baseType.bodySmall.copy(fontSize = 13.sp, lineHeight = 18.sp, letterSpacing = 0.sp),
+    labelLarge = baseType.labelLarge.copy(fontWeight = FontWeight.SemiBold, letterSpacing = 0.sp),
 )
 
 @Composable
 internal fun TransferTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = colors, content = content)
+    MaterialTheme(colorScheme = if (isSystemInDarkTheme()) nightColors else dayColors, typography = transferType, content = content)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -93,7 +105,7 @@ internal fun TransferIconButton(
     label: String,
     onClick: () -> Unit,
     enabled: Boolean = true,
-    tint: Color = Mocha.secondaryText,
+    tint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
 ) {
     TooltipBox(
         positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
@@ -112,6 +124,18 @@ internal fun TransferIconButton(
 }
 
 internal object TransferIcons {
+    val Chart = outline("Chart") {
+        moveTo(4f, 4f)
+        verticalLineTo(20f)
+        horizontalLineTo(21f)
+        moveTo(9f, 16f)
+        verticalLineTo(11f)
+        moveTo(14f, 16f)
+        verticalLineTo(6f)
+        moveTo(19f, 16f)
+        verticalLineTo(9f)
+    }
+
     val Copy = outline("Copy") {
         moveTo(10f, 8f)
         horizontalLineTo(19f)
@@ -240,95 +264,18 @@ internal object TransferIcons {
 
 @Composable
 internal fun BrandMark() {
-    val shape = RoundedCornerShape(14.dp)
     Box(
-        modifier = Modifier
-            .size(42.dp)
-            .background(Mocha.mauve.copy(alpha = 0.13f), shape)
-            .border(1.dp, Mocha.mauve.copy(alpha = 0.2f), shape),
+        modifier = Modifier.size(36.dp).background(cobalt, RoundedCornerShape(11.dp)),
         contentAlignment = Alignment.Center,
     ) {
         Canvas(Modifier.size(29.dp)) {
             val factor = size.width / 48f
             withTransform({ scale(factor, factor, Offset.Zero) }) {
-                drawCircle(Mocha.mauve, 3.5f, Offset(14f, 10f))
-                drawRoundRect(Mocha.mauve, Offset(8f, 18f), Size(32f, 5f), CornerRadius(2.5f))
-                drawRoundRect(Mocha.mauve, Offset(11f, 22f), Size(6f, 18f), CornerRadius(3f))
-                drawRoundRect(Mocha.mauve, Offset(21f, 22f), Size(6f, 18f), CornerRadius(3f))
+                drawCircle(Color.White, 3.5f, Offset(14f, 10f))
+                drawRoundRect(Color.White, Offset(8f, 18f), Size(32f, 5f), CornerRadius(2.5f))
+                drawRoundRect(Color.White, Offset(11f, 22f), Size(6f, 18f), CornerRadius(3f))
+                drawRoundRect(Color.White, Offset(21f, 22f), Size(6f, 18f), CornerRadius(3f))
             }
         }
     }
-}
-
-@Composable
-internal fun TransferArtwork(modifier: Modifier, complete: Boolean = false) {
-    Canvas(modifier) {
-        val factor = min(size.width / 152f, size.height / 124f)
-        withTransform({
-            translate((size.width - 152f * factor) / 2, (size.height - 124f * factor) / 2)
-            scale(factor, factor, Offset.Zero)
-        }) {
-            val accent = if (complete) Mocha.green else Mocha.lavender
-            drawCircle(
-                Brush.radialGradient(
-                    listOf(accent.copy(alpha = 0.2f), Color.Transparent),
-                    center = Offset(77f, 62f),
-                    radius = 66f,
-                ),
-                radius = 66f,
-                center = Offset(77f, 62f),
-            )
-            rotate(-22f, Offset(76f, 63f)) {
-                drawOval(
-                    accent.copy(alpha = 0.22f),
-                    topLeft = Offset(4f, 36f),
-                    size = Size(144f, 54f),
-                    style = Stroke(width = 1f),
-                )
-                drawCircle(accent, radius = 2.2f, center = Offset(28f, 83f))
-            }
-            drawSpark(Offset(28f, 33f), Mocha.mauve, 4f)
-            drawSpark(Offset(125f, 88f), accent, 5f)
-            drawCircle(Mocha.mauve.copy(alpha = 0.55f), radius = 1.6f, center = Offset(111f, 22f))
-
-            if (complete) {
-                drawCircle(Mocha.base, radius = 33f, center = Offset(76f, 62f))
-                drawCircle(Mocha.green.copy(alpha = 0.2f), radius = 33f, center = Offset(76f, 62f))
-                drawCircle(Mocha.green.copy(alpha = 0.5f), radius = 33f, center = Offset(76f, 62f), style = Stroke(1f))
-                val check = Path().apply {
-                    moveTo(60f, 62f)
-                    lineTo(71f, 72f)
-                    lineTo(92f, 51f)
-                }
-                drawPath(check, Mocha.green, style = Stroke(width = 4f, cap = StrokeCap.Round))
-            } else {
-                rotate(-16f, Offset(67f, 62f)) {
-                    drawRoundRect(Mocha.surface, Offset(41f, 29f), Size(53f, 68f), CornerRadius(12f))
-                    drawRoundRect(Mocha.border, Offset(41f, 29f), Size(53f, 68f), CornerRadius(12f), style = Stroke(1f))
-                }
-                rotate(8f, Offset(74f, 65f)) {
-                    drawRoundRect(Mocha.base, Offset(49f, 29f), Size(53f, 69f), CornerRadius(12f))
-                    drawRoundRect(Mocha.mauve.copy(alpha = 0.65f), Offset(49f, 29f), Size(53f, 69f), CornerRadius(12f), style = Stroke(1f))
-                    drawRoundRect(Mocha.mauve.copy(alpha = 0.3f), Offset(59f, 40f), Size(15f, 15f), CornerRadius(5f))
-                    drawLine(Mocha.lavender.copy(alpha = 0.75f), Offset(60f, 65f), Offset(85f, 65f), 2.5f, StrokeCap.Round)
-                    drawLine(Mocha.border, Offset(60f, 73f), Offset(77f, 73f), 2.5f, StrokeCap.Round)
-                    drawLine(Mocha.border, Offset(60f, 81f), Offset(70f, 81f), 2.5f, StrokeCap.Round)
-                }
-                val plane = Path().apply {
-                    moveTo(87f, 58f)
-                    lineTo(139f, 40f)
-                    lineTo(121f, 84f)
-                    lineTo(111f, 69f)
-                    close()
-                }
-                drawPath(plane, Brush.linearGradient(listOf(Mocha.mauve, Mocha.lavender), Offset(91f, 59f), Offset(134f, 55f)))
-                drawLine(Mocha.base.copy(alpha = 0.6f), Offset(111f, 69f), Offset(132f, 46f), 1.5f, StrokeCap.Round)
-            }
-        }
-    }
-}
-
-private fun DrawScope.drawSpark(center: Offset, color: Color, radius: Float) {
-    drawLine(color, center.copy(x = center.x - radius), center.copy(x = center.x + radius), 1f, StrokeCap.Round)
-    drawLine(color, center.copy(y = center.y - radius), center.copy(y = center.y + radius), 1f, StrokeCap.Round)
 }

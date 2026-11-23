@@ -2,6 +2,7 @@ package com.vivacityholding.itransfer.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,11 +19,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowDropDown
-import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material3.AlertDialog
@@ -38,7 +39,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -54,14 +54,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.vivacityholding.itransfer.MAX_EXACT_JSON_INTEGER
@@ -168,7 +167,7 @@ internal fun WorkspaceRequestComposer(
                     copyLink,
                     shareLink,
                     openLink,
-                    accent = Mocha.teal,
+                    accent = MaterialTheme.colorScheme.secondary,
                 )
             }
             item { OutlinedAction("Create another request", { resultLink = null }) }
@@ -277,7 +276,7 @@ private fun WorkspaceRequestForm(
                     onLengthChange = { idLength = it },
                     minLength = MIN_LINK_LENGTH,
                     enabled = !saving,
-                    accent = Mocha.teal,
+                    accent = MaterialTheme.colorScheme.secondary,
                 )
             }
             item {
@@ -352,7 +351,7 @@ private fun WorkspaceRequestForm(
                 ::submit,
                 icon = TransferIcons.Inbox,
                 enabled = !saving && title.isNotBlank(),
-                accent = Mocha.teal,
+                accent = MaterialTheme.colorScheme.secondary,
             )
         }
     }
@@ -366,44 +365,28 @@ internal fun TransferLinkFormatFields(
     onLengthChange: (Int) -> Unit,
     minLength: Int,
     enabled: Boolean = true,
-    accent: Color = Mocha.mauve,
+    accent: Color = MaterialTheme.colorScheme.primary,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         WorkspaceSectionTitle("Link format")
-        Row(Modifier.fillMaxWidth().selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            Modifier.fillMaxWidth().selectableGroup().background(MaterialTheme.colorScheme.surfaceContainerHigh, workspaceShape).padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
             for (option in listOf(WorkspaceIdFormat.ANIMALS, WorkspaceIdFormat.RANDOM)) {
                 val selected = option == format
                 val animals = option == WorkspaceIdFormat.ANIMALS
-                val tint = if (selected) accent else Mocha.secondaryText
-                Surface(
-                    modifier = Modifier.weight(1f).selectable(
-                        selected = selected,
-                        enabled = enabled,
-                        role = Role.RadioButton,
-                        onClick = { onFormatChange(option) },
-                    ),
-                    shape = workspaceShape,
-                    color = if (selected) accent.copy(alpha = 0.12f) else Mocha.mantle,
-                    border = BorderStroke(1.dp, if (selected) accent.copy(alpha = 0.54f) else Mocha.border.copy(alpha = 0.58f)),
+                val tint = if (selected) accent else MaterialTheme.colorScheme.onSurfaceVariant
+                Row(
+                    Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
+                        .background(if (selected) MaterialTheme.colorScheme.surface else Color.Transparent)
+                        .selectable(selected, enabled = enabled, role = Role.RadioButton, onClick = { onFormatChange(option) })
+                        .heightIn(min = 48.dp).padding(horizontal = 6.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp, Alignment.CenterHorizontally),
                 ) {
-                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Icon(
-                                if (animals) TransferIcons.Cat else TransferIcons.Random,
-                                contentDescription = null,
-                                tint = tint,
-                                modifier = Modifier.size(22.dp),
-                            )
-                            if (selected) Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
-                        }
-                        Text(
-                            if (animals) "Animals" else "Random",
-                            color = if (selected) accent else Mocha.text,
-                            fontWeight = FontWeight.SemiBold,
-                            style = MaterialTheme.typography.titleSmall,
-                        )
-                        SupportingText(if (animals) "Three animal names" else "Letters and numbers", small = true)
-                    }
+                    Icon(if (animals) TransferIcons.Cat else TransferIcons.Random, null, Modifier.size(20.dp), tint = tint)
+                    Text(if (animals) "Animals" else "Random", color = tint, style = MaterialTheme.typography.labelLarge)
                 }
             }
         }
@@ -430,13 +413,7 @@ internal fun TransferLinkFormatFields(
                 ),
             )
         } else {
-            Text(
-                "/otter-fox-cat",
-                style = MaterialTheme.typography.bodySmall,
-                fontFamily = FontFamily.Monospace,
-                color = Mocha.secondaryText,
-                modifier = Modifier.padding(horizontal = 2.dp),
-            )
+            SupportingText("Three animal names · /otter-fox-cat", small = true)
         }
     }
 }
@@ -461,7 +438,7 @@ internal fun TransferOptionalSettings(
             Icon(
                 if (expanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
                 contentDescription = null,
-                tint = Mocha.secondaryText,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         if (expanded) {
@@ -584,7 +561,7 @@ private fun WorkspaceUnitChoice(
             modifier = Modifier.semantics { contentDescription = label },
             enabled = enabled,
             shape = workspaceShape,
-            border = BorderStroke(1.dp, Mocha.border),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         ) {
             Text(choices[selected])
             Icon(Icons.Rounded.ArrowDropDown, contentDescription = null)

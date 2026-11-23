@@ -89,7 +89,7 @@ internal fun AccountCostsScreen(
                 AccountHeading("Estimated monthly R2 cost")
                 Text(
                     usd(costs.monthlyUsd), style = MaterialTheme.typography.headlineLarge,
-                    color = Mocha.mauve, fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold,
                 )
                 Text("All workspaces after the shared free tier", style = MaterialTheme.typography.bodyMedium)
                 costs.grossMonthlyUsd?.let { AccountValue("Before free tier", usd(it)) }
@@ -154,7 +154,7 @@ private fun AccountCostBreakdownPanel(costs: AccountCosts) {
                 LinearProgressIndicator(
                     progress = { fraction.toFloat().coerceIn(0f, 1f) },
                     modifier = Modifier.fillMaxWidth(),
-                    trackColor = Mocha.surface,
+                    trackColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                 )
                 val percent = NumberFormat.getPercentInstance().apply { maximumFractionDigits = 1 }.format(fraction)
                 SupportingText("$percent of the ${line.freeLabel} free allowance", small = true)

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -134,7 +135,7 @@ internal fun PublicLanguageMenu() {
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             for ((tag, name) in publicLanguages) {
                 DropdownMenuItem(
-                    text = { Text(name, color = if (tag == language.tag) Mocha.mauve else Mocha.text) },
+                    text = { Text(name, color = if (tag == language.tag) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface) },
                     onClick = {
                         expanded = false
                         choice.select(tag)

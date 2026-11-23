@@ -1,52 +1,52 @@
 package com.vivacityholding.itransfer.ui
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
-import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -61,10 +61,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -125,7 +122,6 @@ internal fun rememberWorkspaceDashboardState(): WorkspaceDashboardState {
     return remember(tab, filter, query, listState) { WorkspaceDashboardState(tab, filter, query, listState) }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun WorkspaceDashboard(
     state: WorkspaceDashboardState,
@@ -163,22 +159,17 @@ internal fun WorkspaceDashboard(
             state = state.listState,
             modifier = Modifier.fillMaxWidth().weight(1f),
             contentPadding = workspaceListPadding,
-            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            if (!readOnly) {
-                item(key = "workspace-start") {
-                    WorkspaceCreateAction(
-                        kind = tab,
-                        hasDraft = tab == WorkspaceKind.SHARE && draftAvailable,
-                        create = {
-                            state.exitSelection()
-                            if (tab == WorkspaceKind.SHARE) newShare() else newRequest()
-                        },
-                    )
+            item(key = "workspace-start") {
+                Box(Modifier.padding(bottom = 14.dp)) {
+                    WorkspaceCover(tab, readOnly, tab == WorkspaceKind.SHARE && draftAvailable) {
+                        state.exitSelection()
+                        if (tab == WorkspaceKind.SHARE) newShare() else newRequest()
+                    }
                 }
             }
             item(key = "workspace-controls") {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Column(Modifier.padding(bottom = 6.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         val searchLabel = "Search ${tab.plural}"
                         TextField(
@@ -188,9 +179,12 @@ internal fun WorkspaceDashboard(
                                 state.selectedIds = emptySet()
                             },
                             modifier = Modifier.weight(1f).semantics { contentDescription = searchLabel },
-                            placeholder = { Text(searchLabel) },
+                            placeholder = {
+                                val hint = if (LocalDensity.current.fontScale > 1.1f) "Search" else searchLabel
+                                Text(hint, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            },
                             singleLine = true,
-                            leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null, tint = Mocha.secondaryText) },
+                            leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
                             trailingIcon = if (state.query.isNotEmpty()) {
                                 {
                                     IconButton(onClick = {
@@ -205,8 +199,8 @@ internal fun WorkspaceDashboard(
                             },
                             shape = workspaceShape,
                             colors = TextFieldDefaults.colors(
-                                focusedContainerColor = Mocha.base,
-                                unfocusedContainerColor = Mocha.mantle,
+                                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                                 focusedIndicatorColor = Color.Transparent,
                                 unfocusedIndicatorColor = Color.Transparent,
                             ),
@@ -219,7 +213,7 @@ internal fun WorkspaceDashboard(
                         )
                         WorkspaceRefresh("Refresh ${tab.plural}", loading, refresh)
                     }
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         WorkspaceFilter.entries.forEach { filter ->
                             val count = entries.count { filter.matches(it.status) }
                             FilterChip(
@@ -234,10 +228,10 @@ internal fun WorkspaceDashboard(
                                 shape = RoundedCornerShape(50),
                                 border = null,
                                 colors = FilterChipDefaults.filterChipColors(
-                                    containerColor = Mocha.mantle,
-                                    labelColor = Mocha.secondaryText,
-                                    selectedContainerColor = accent.copy(alpha = 0.16f),
-                                    selectedLabelColor = accent,
+                                    containerColor = Color.Transparent,
+                                    labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    selectedContainerColor = MaterialTheme.colorScheme.onSurface,
+                                    selectedLabelColor = MaterialTheme.colorScheme.surface,
                                 ),
                             )
                         }
@@ -246,7 +240,7 @@ internal fun WorkspaceDashboard(
             }
             loadError?.let { message ->
                 item(key = "workspace-load-error") {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Column(Modifier.padding(bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Notice(message)
                         OutlinedAction("Try again", refresh, enabled = !loading)
                     }
@@ -254,7 +248,9 @@ internal fun WorkspaceDashboard(
             }
             feedback?.let {
                 item(key = "workspace-feedback") {
-                    Notice(it.message, error = it.error, success = !it.error, dismiss = dismissFeedback)
+                    Box(Modifier.padding(bottom = 10.dp)) {
+                        Notice(it.message, error = it.error, success = !it.error, dismiss = dismissFeedback)
+                    }
                 }
             }
             if (preparingDownload) {
@@ -262,7 +258,7 @@ internal fun WorkspaceDashboard(
             }
             if (visible.isEmpty() && !loading && loadError == null) {
                 item(key = "workspace-empty") {
-                    Panel {
+                    Panel(padding = 22) {
                         val empty = entries.isEmpty() && query.isEmpty()
                         Icon(tab.icon, contentDescription = null, tint = accent, modifier = Modifier.size(28.dp))
                         WorkspaceSectionTitle(if (empty) "No ${tab.plural} yet" else "No matching ${tab.plural}")
@@ -272,9 +268,11 @@ internal fun WorkspaceDashboard(
                     }
                 }
             }
-            items(visible, key = { "entry:${it.id}" }) { entry ->
+            itemsIndexed(visible, key = { _, entry -> "entry:${entry.id}" }) { index, entry ->
                 WorkspaceDashboardRow(
                     entry = entry,
+                    first = index == 0,
+                    last = index == visible.lastIndex,
                     selecting = state.selecting,
                     checked = entry.id in state.selectedIds,
                     onSelect = if (!readOnly || entry.canDownload) {
@@ -294,8 +292,8 @@ internal fun WorkspaceDashboard(
             }
         }
         if (state.selecting) {
-            HorizontalDivider(color = Mocha.border.copy(alpha = 0.58f))
-            Surface(color = Mocha.base, modifier = Modifier.fillMaxWidth()) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.58f))
+            Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 3.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -342,84 +340,50 @@ internal fun WorkspaceDashboard(
     }
 }
 
-private val WorkspaceKind.accent get() = if (this == WorkspaceKind.SHARE) Mocha.mauve else Mocha.teal
+private val WorkspaceKind.accent: Color
+    @Composable get() = if (this == WorkspaceKind.SHARE) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary
+
 private val WorkspaceKind.icon get() = if (this == WorkspaceKind.SHARE) Icons.AutoMirrored.Rounded.Send else TransferIcons.Inbox
+private val WorkspaceKind.tabLabel get() = if (this == WorkspaceKind.SHARE) "Shares" else "Requests"
 
 @Composable
 private fun WorkspaceDock(active: WorkspaceKind, select: (WorkspaceKind) -> Unit) {
-    Surface(Modifier.fillMaxWidth(), color = Mocha.mantle) {
-        Column {
-            HorizontalDivider(color = Mocha.border.copy(alpha = 0.58f))
-            Row(
-                Modifier.fillMaxWidth().selectableGroup().padding(horizontal = workspaceGutter, vertical = 7.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                for (kind in WorkspaceKind.entries) {
-                    val selected = kind == active
-                    val tint by animateColorAsState(if (selected) kind.accent else Mocha.secondaryText, label = "Dock content")
-                    val container by animateColorAsState(
-                        if (selected) kind.accent.copy(alpha = 0.15f) else Color.Transparent,
-                        label = "Dock selection",
-                    )
-                    Row(
-                        Modifier.weight(1f).clip(workspaceShape).background(container)
-                            .selectable(selected, role = Role.Tab, onClick = { select(kind) })
-                            .heightIn(min = 50.dp).padding(horizontal = 8.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(kind.icon, contentDescription = null, tint = tint, modifier = Modifier.size(19.dp))
-                        Text(
-                            if (kind == WorkspaceKind.SHARE) "Shares" else "Requests",
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                            color = tint,
-                        )
-                    }
-                }
-            }
+    val colors = MaterialTheme.colorScheme
+    HorizontalDivider(color = colors.outlineVariant.copy(alpha = 0.65f))
+    NavigationBar(containerColor = colors.surface, tonalElevation = 0.dp, windowInsets = WindowInsets(0, 0, 0, 0)) {
+        for (kind in WorkspaceKind.entries) {
+            NavigationBarItem(
+                selected = kind == active,
+                onClick = { select(kind) },
+                icon = { Icon(kind.icon, contentDescription = null, modifier = Modifier.size(22.dp)) },
+                label = { Text(kind.tabLabel, style = MaterialTheme.typography.labelMedium) },
+                colors = NavigationBarItemDefaults.colors(
+                    selectedIconColor = kind.accent,
+                    selectedTextColor = kind.accent,
+                    indicatorColor = if (kind == WorkspaceKind.SHARE) colors.primaryContainer else colors.secondaryContainer,
+                    unselectedIconColor = colors.onSurfaceVariant,
+                    unselectedTextColor = colors.onSurfaceVariant,
+                ),
+            )
         }
     }
 }
 
 @Composable
-private fun WorkspaceCreateAction(kind: WorkspaceKind, hasDraft: Boolean, create: () -> Unit) {
-    val accent = kind.accent
-    Surface(
-        onClick = create,
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        color = Mocha.mantle,
-        border = BorderStroke(1.dp, accent.copy(alpha = 0.32f)),
-    ) {
-        Row(
-            Modifier.fillMaxWidth()
-                .background(Brush.horizontalGradient(listOf(accent.copy(alpha = 0.16f), Color.Transparent)))
-                .heightIn(min = 68.dp).padding(horizontal = 12.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                Modifier.size(38.dp).background(accent.copy(alpha = 0.2f), RoundedCornerShape(12.dp)),
-                contentAlignment = Alignment.Center,
+private fun WorkspaceCover(kind: WorkspaceKind, readOnly: Boolean, hasDraft: Boolean, create: () -> Unit) {
+    TransferCover(kind.tabLabel, receiving = kind == WorkspaceKind.REQUEST) {
+        if (!readOnly) {
+            Button(
+                onClick = create,
+                colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color(0xFF182135)),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
             ) {
                 Icon(
                     if (hasDraft) Icons.AutoMirrored.Rounded.ArrowForward else Icons.Rounded.Add,
-                    contentDescription = null,
-                    tint = accent,
-                    modifier = Modifier.size(22.dp),
+                    contentDescription = null, modifier = Modifier.size(17.dp),
                 )
+                Text(if (hasDraft) "Continue draft" else "New ${kind.singular}", modifier = Modifier.padding(start = 6.dp))
             }
-            Text(
-                if (hasDraft) "Continue draft" else "New ${kind.singular}",
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-            )
-            if (LocalDensity.current.fontScale < 1.45f) {
-                TransferArtwork(Modifier.size(width = 84.dp, height = 49.dp))
-            }
-            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = accent)
         }
     }
 }
@@ -428,6 +392,8 @@ private fun WorkspaceCreateAction(kind: WorkspaceKind, hasDraft: Boolean, create
 @Composable
 private fun WorkspaceDashboardRow(
     entry: WorkspaceEntry,
+    first: Boolean,
+    last: Boolean,
     selecting: Boolean,
     checked: Boolean,
     onSelect: ((Boolean) -> Unit)?,
@@ -437,153 +403,131 @@ private fun WorkspaceDashboardRow(
     downloadEnabled: Boolean,
     purge: (() -> Unit)?,
 ) {
-    val status = entry.status
+    val colors = MaterialTheme.colorScheme
     val accent = entry.kind.accent
-    val showActions = !selecting && (status.showsLink || entry.canDownload || purge != null)
+    val status = entry.status
+    val top = if (first) 20.dp else 0.dp
+    val bottom = if (last) 20.dp else 0.dp
+    val shape = RoundedCornerShape(topStart = top, topEnd = top, bottomStart = bottom, bottomEnd = bottom)
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = workspaceShape,
-        color = if (checked) accent.copy(alpha = 0.1f) else Mocha.mantle,
-        border = BorderStroke(1.dp, if (checked) accent.copy(alpha = 0.5f) else Mocha.border.copy(alpha = 0.55f)),
+        shape = shape,
+        color = if (checked) colors.primaryContainer else colors.surface,
     ) {
         Column {
-            Row(
-                Modifier.fillMaxWidth().combinedClickable(
-                    enabled = !selecting || onSelect != null,
-                    onClickLabel = when {
-                        !selecting -> "Open ${entry.kind.singular} details"
-                        checked -> "Deselect ${entry.title}"
-                        else -> "Select ${entry.title}"
-                    },
-                    onLongClickLabel = "Select ${entry.title}",
-                    onLongClick = if (!selecting && onSelect != null) { { onSelect(true) } } else null,
-                    role = Role.Button,
-                    onClick = { if (selecting) onSelect?.invoke(!checked) else showDetails() },
-                ).semantics {
-                    if (selecting && onSelect != null) stateDescription = if (checked) "Selected" else "Unselected"
-                }.heightIn(min = 62.dp).padding(start = 12.dp, end = 8.dp, top = 9.dp, bottom = 7.dp),
-                horizontalArrangement = Arrangement.spacedBy(9.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (selecting && onSelect != null) {
-                    Checkbox(
-                        checked = checked,
-                        onCheckedChange = null,
-                    )
-                } else if (LocalDensity.current.fontScale < 1.45f) {
-                    if (entry.kind == WorkspaceKind.SHARE) {
-                        FileTile(accent)
-                    } else {
-                        Box(
-                            Modifier.size(40.dp).background(accent.copy(alpha = 0.12f), RoundedCornerShape(12.dp)),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(entry.kind.icon, contentDescription = null, tint = accent, modifier = Modifier.size(20.dp))
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val fontScale = LocalDensity.current.fontScale
+                val showTile = maxWidth >= 300.dp && fontScale <= 1.35f
+                val inlineCopy = status.showsLink && maxWidth >= 345.dp && fontScale <= 1.15f
+                Row(Modifier.fillMaxWidth().padding(end = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        Modifier.weight(1f).combinedClickable(
+                            enabled = !selecting || onSelect != null,
+                            onClickLabel = when {
+                                !selecting -> "Open ${entry.kind.singular} details"
+                                checked -> "Deselect ${entry.title}"
+                                else -> "Select ${entry.title}"
+                            },
+                            onLongClickLabel = "Select ${entry.title}",
+                            onLongClick = if (!selecting && onSelect != null) { { onSelect(true) } } else null,
+                            role = Role.Button,
+                            onClick = { if (selecting) onSelect?.invoke(!checked) else showDetails() },
+                        ).semantics {
+                            if (selecting && onSelect != null) stateDescription = if (checked) "Selected" else "Unselected"
+                        }.padding(start = 14.dp, end = 2.dp, top = 14.dp, bottom = 14.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (selecting && onSelect != null) {
+                            Checkbox(checked = checked, onCheckedChange = null)
+                        } else if (showTile) {
+                            if (entry.kind == WorkspaceKind.SHARE) FileTile(accent)
+                            else Box(
+                                Modifier.size(40.dp).background(colors.secondaryContainer, RoundedCornerShape(12.dp)),
+                                contentAlignment = Alignment.Center,
+                            ) { Icon(entry.kind.icon, null, Modifier.size(21.dp), tint = accent) }
+                        }
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(entry.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            val size = entry.totalBytes?.let { " · ${byteSize(it)}" }.orEmpty()
+                            val label = entry.kind.countLabel.lowercase().let {
+                                if (entry.count == 1L && entry.limit == null) it.removeSuffix("s") else it
+                            }
+                            SupportingText("${workspaceFileCount(entry.fileCount)}$size · ${entry.countText} $label", small = true)
+                            Row(
+                                modifier = Modifier.padding(top = 2.dp),
+                                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                WorkspaceStatusBadge(status)
+                                if (status != WorkspaceStatus.EXPIRED) {
+                                    Text(expirySummary(entry.expiresAt), color = colors.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
                         }
                     }
-                }
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(
-                        entry.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    val size = entry.totalBytes?.let { " · ${byteSize(it)}" }.orEmpty()
-                    val count = "${entry.countText} ${entry.kind.countLabel.lowercase()}"
-                    SupportingText("${workspaceFileCount(entry.fileCount)}$size · $count", small = true)
-                }
-                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    WorkspaceStatusBadge(status)
-                    if (status != WorkspaceStatus.EXPIRED) {
-                        Text(expirySummary(entry.expiresAt), color = Mocha.secondaryText, style = MaterialTheme.typography.labelSmall)
-                    }
-                }
-                if (!selecting && LocalDensity.current.fontScale < 1.45f) {
-                    Icon(
-                        Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                        contentDescription = null,
-                        modifier = Modifier.size(17.dp),
-                        tint = Mocha.secondaryText,
-                    )
-                }
-            }
-            if (showActions) {
-                BoxWithConstraints(Modifier.fillMaxWidth().padding(start = 10.dp, end = 4.dp, bottom = 4.dp)) {
-                    val showLabels = maxWidth >= 312.dp && LocalDensity.current.fontScale <= 1.25f
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        if (status.showsLink) {
-                            WorkspaceCardAction(TransferIcons.Copy, "Copy link", showLabels, copyLink, accent = accent)
-                        }
-                        if (entry.canDownload) {
-                            WorkspaceCardAction(TransferIcons.Download, "Download", showLabels, download, enabled = downloadEnabled)
-                        }
-                        Spacer(Modifier.weight(1f))
-                        if (purge != null) {
-                            WorkspaceDeleteAction("Permanently delete ${entry.title}", onClick = purge)
+                    if (!selecting) {
+                        if (inlineCopy) TransferIconButton(TransferIcons.Copy, "Copy link", copyLink, tint = accent)
+                        val menuCopy = status.showsLink && !inlineCopy
+                        if (menuCopy || entry.canDownload || purge != null) {
+                            EntryMenu(entry.title, if (menuCopy) copyLink else null, if (entry.canDownload) download else null, downloadEnabled, purge)
                         }
                     }
                 }
             }
+            if (!last) HorizontalDivider(Modifier.padding(horizontal = 14.dp), color = colors.outlineVariant.copy(alpha = 0.65f))
         }
     }
 }
 
 @Composable
-private fun WorkspaceCardAction(
-    icon: ImageVector,
-    label: String,
-    showLabel: Boolean,
-    onClick: () -> Unit,
-    enabled: Boolean = true,
-    accent: Color? = null,
-) {
-    if (!showLabel) {
-        TransferIconButton(icon, label, onClick, enabled, tint = accent ?: Mocha.secondaryText)
-        return
-    }
-    val padding = PaddingValues(horizontal = 10.dp, vertical = 7.dp)
-    val content: @Composable RowScope.() -> Unit = {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
-        Text(label, modifier = Modifier.padding(start = 6.dp))
-    }
-    if (accent != null) {
-        FilledTonalButton(
-            onClick = onClick,
-            enabled = enabled,
-            colors = ButtonDefaults.filledTonalButtonColors(containerColor = accent.copy(alpha = 0.13f), contentColor = accent),
-            contentPadding = padding,
-            content = content,
-        )
-    } else {
-        TextButton(
-            onClick = onClick,
-            enabled = enabled,
-            colors = ButtonDefaults.textButtonColors(contentColor = Mocha.secondaryText),
-            contentPadding = padding,
-            content = content,
-        )
+private fun EntryMenu(title: String, copy: (() -> Unit)?, download: (() -> Unit)?, downloadEnabled: Boolean, purge: (() -> Unit)?) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        TransferIconButton(Icons.Rounded.MoreVert, "Actions for $title", { expanded = true })
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            if (copy != null) DropdownMenuItem(
+                text = { Text("Copy link") }, leadingIcon = { Icon(TransferIcons.Copy, null) },
+                onClick = {
+                    expanded = false
+                    copy()
+                },
+            )
+            if (download != null) DropdownMenuItem(
+                text = { Text("Download") }, leadingIcon = { Icon(TransferIcons.Download, null) },
+                onClick = {
+                    expanded = false
+                    download()
+                },
+                enabled = downloadEnabled,
+            )
+            if (purge != null) DropdownMenuItem(
+                text = { Text("Delete permanently", color = MaterialTheme.colorScheme.error) },
+                leadingIcon = { Icon(Icons.Rounded.Delete, null, tint = MaterialTheme.colorScheme.error) },
+                onClick = {
+                    expanded = false
+                    purge()
+                },
+            )
+        }
     }
 }
 
 @Composable
 internal fun WorkspaceStatusBadge(status: WorkspaceStatus) {
     val (label, color) = when (status) {
-        WorkspaceStatus.AVAILABLE -> "Available" to Mocha.green
-        WorkspaceStatus.PAUSED -> "Paused" to Mocha.yellow
-        WorkspaceStatus.UPLOADING -> "Uploading…" to Mocha.lavender
-        WorkspaceStatus.LIMIT_REACHED -> "Limit reached" to Mocha.yellow
-        WorkspaceStatus.EXPIRED -> "Expired" to Mocha.secondaryText
-        WorkspaceStatus.DELETED -> "Deleted" to Mocha.secondaryText
+        WorkspaceStatus.AVAILABLE -> "Available" to MaterialTheme.colorScheme.secondary
+        WorkspaceStatus.PAUSED -> "Paused" to MaterialTheme.colorScheme.tertiary
+        WorkspaceStatus.UPLOADING -> "Uploading…" to MaterialTheme.colorScheme.primary
+        WorkspaceStatus.LIMIT_REACHED -> "Limit reached" to MaterialTheme.colorScheme.tertiary
+        WorkspaceStatus.EXPIRED -> "Expired" to MaterialTheme.colorScheme.onSurfaceVariant
+        WorkspaceStatus.DELETED -> "Deleted" to MaterialTheme.colorScheme.onSurfaceVariant
     }
-    Text(
-        label,
-        modifier = Modifier.background(color.copy(alpha = 0.13f), RoundedCornerShape(8.dp))
-            .padding(horizontal = 7.dp, vertical = 3.dp),
-        color = color,
-        style = MaterialTheme.typography.labelSmall,
-    )
+    Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(6.dp).background(color, CircleShape))
+        Text(label, color = color, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+    }
 }
 
 @Composable
@@ -621,7 +565,7 @@ internal fun WorkspaceLoading(message: String) {
 
 @Composable
 internal fun WorkspaceDeleteAction(label: String, enabled: Boolean = true, onClick: () -> Unit) {
-    TransferIconButton(Icons.Rounded.Delete, label, onClick, enabled = enabled, tint = Mocha.red)
+    TransferIconButton(Icons.Rounded.Delete, label, onClick, enabled = enabled, tint = MaterialTheme.colorScheme.error)
 }
 
 internal fun workspaceFileCount(count: Int): String = if (count == 1) "1 file" else "$count files"
