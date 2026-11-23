@@ -199,22 +199,6 @@ internal object TransferIcons {
         horizontalLineTo(21f)
     }
 
-    val Selection = outline("Selection") {
-        moveTo(10f, 4f)
-        horizontalLineTo(19f)
-        quadTo(20f, 4f, 20f, 5f)
-        verticalLineTo(19f)
-        quadTo(20f, 20f, 19f, 20f)
-        horizontalLineTo(5f)
-        quadTo(4f, 20f, 4f, 19f)
-        verticalLineTo(12f)
-        moveTo(4f, 7f)
-        lineTo(7f, 10f)
-        lineTo(12f, 5f)
-        moveTo(8f, 15f)
-        horizontalLineTo(15f)
-    }
-
     val Cat = outline("Cat") {
         moveTo(4f, 13f)
         verticalLineTo(5f)

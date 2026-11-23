@@ -100,7 +100,8 @@ internal fun WorkspaceScreen(
         var pendingPurge by remember { mutableStateOf<List<WorkspaceEntry>?>(null) }
         var purgeCompleted by remember { mutableStateOf<Int?>(null) }
 
-        LaunchedEffect(client, requestRefresh) {
+        val requestRefreshVersion = requestRefresh
+        LaunchedEffect(client, requestRefreshVersion) {
             requestsLoading = true
             requestsError = null
             try {
@@ -111,12 +112,17 @@ internal fun WorkspaceScreen(
                 sessionError(failure)
                 requestsError = workspaceErrorMessage(failure, "Couldn't load file requests.")
             } finally {
-                requestsLoading = false
+                if (requestRefresh == requestRefreshVersion) requestsLoading = false
             }
         }
 
         fun refresh(kind: WorkspaceKind) {
-            if (kind == WorkspaceKind.SHARE) refreshShares() else requestRefresh++
+            if (kind == WorkspaceKind.SHARE) {
+                refreshShares()
+            } else {
+                requestsLoading = true
+                requestRefresh++
+            }
         }
 
         fun download(entries: List<WorkspaceEntry>) {
@@ -197,7 +203,8 @@ internal fun WorkspaceScreen(
             }
         }
 
-        val shareTab = dashboard.tab == WorkspaceKind.SHARE
+        val tab = dashboard.tab
+        val shareTab = tab == WorkspaceKind.SHARE
         val entries = if (shareTab) {
             remember(shares, purgedIds) { shares.filterNot { it.id in purgedIds }.map(Share::toWorkspaceEntry) }
         } else {
@@ -251,7 +258,9 @@ internal fun WorkspaceScreen(
                     readOnly = access.readOnly,
                     draftAvailable = draftAvailable,
                     preparingDownload = preparingDownload,
-                    refresh = { refresh(dashboard.tab) },
+                    refresh = {
+                        if (dashboard.tab == tab && (shareTab || !requestsLoading)) refresh(tab)
+                    },
                     newShare = onNewShare,
                     newRequest = {
                         feedback = null
