@@ -3,6 +3,8 @@ import { useAuth } from "../context/AuthContext";
 import { Mail, Lock, Loader2, AlertCircle } from "lucide-react";
 import logoSvg from "../assets/logo.svg";
 import PasswordInput from "./PasswordInput";
+import TransferCover from "./TransferCover";
+import "./transfer-page.css";
 
 export default function LoginPage() {
   const { login, error, notice } = useAuth();
@@ -44,42 +46,35 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-dvh page-bg-animated flex items-center justify-center p-4">
-      <div className="relative z-10 w-full max-w-sm animate-slide-up">
-        {/* Card */}
-        <div className="surface rounded-lg p-8 sm:p-10">
-          {/* Logo + Heading */}
-          <div className="text-center mb-8">
-            <div className="flex justify-center mb-4">
-              <div className="w-14 h-14 rounded-lg bg-primary/10 flex items-center justify-center">
-                <img src={logoSvg} alt="iTransfer" className="w-9 h-9" />
-              </div>
-            </div>
-            <h1 className="text-2xl font-bold text-text-primary">
-              Welcome back
-            </h1>
-            <p className="text-text-muted mt-1 text-sm">
-              Sign in to your iTransfer account
-            </p>
+    <main className="transfer-page transfer-page--auth">
+      <div className="transfer-page-column">
+        <header className="transfer-page-header">
+          <div className="transfer-page-brand">
+            <img src={logoSvg} alt="iTransfer" />
+            <span aria-hidden="true">iTransfer</span>
           </div>
+        </header>
 
-          {/* Error */}
+        <TransferCover title="Welcome back" headingLevel={1}>
+          <p className="text-sm leading-relaxed text-text-secondary">Sign in to your iTransfer account</p>
+        </TransferCover>
+
+        <div className="transfer-page-panel">
           {displayError && (
-            <div role="alert" className="mb-6 flex items-center gap-2 bg-danger/10 border border-danger/20 rounded-md px-4 py-3 text-sm text-danger animate-fade-in">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            <div role="alert" className="mb-5 flex items-start gap-2 rounded-xl border border-danger/20 bg-danger/10 px-4 py-3 text-sm text-danger">
+              <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
               {displayError}
             </div>
           )}
 
-          {/* Form */}
-          {notice && <p role="status" className="mb-6 text-sm text-success">{notice}</p>}
+          {notice && <p role="status" className="mb-5 text-sm text-success">{notice}</p>}
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <label htmlFor="login-email" className="block text-sm font-medium text-text-secondary mb-1.5">
+              <label htmlFor="login-email" className="mb-1.5 block text-sm font-semibold">
                 Email
               </label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+                <Mail className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-text-muted" aria-hidden="true" />
                 <input
                   type="email"
                   id="login-email"
@@ -94,11 +89,11 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label htmlFor="login-password" className="block text-sm font-medium text-text-secondary mb-1.5">
+              <label htmlFor="login-password" className="mb-1.5 block text-sm font-semibold">
                 Password
               </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted z-10 pointer-events-none" aria-hidden="true" />
+                <Lock className="pointer-events-none absolute left-3.5 top-1/2 z-10 size-4 -translate-y-1/2 text-text-muted" aria-hidden="true" />
                 <PasswordInput
                   id="login-password"
                   required
@@ -114,11 +109,11 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="btn-primary w-full flex items-center justify-center gap-2 py-3 text-base"
+              className="btn-primary transfer-page-action"
             >
               {loading ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden="true" />
                   Signing in...
                 </>
               ) : (
@@ -126,10 +121,11 @@ export default function LoginPage() {
               )}
             </button>
           </form>
-          <p className="text-sm text-text-secondary mt-6">Need access or forgot your password? Ask your administrator to send a new single-use setup or password reset link.</p>
+          <p className="mt-6 border-t border-border pt-4 text-sm leading-relaxed text-text-secondary">
+            Need access or forgot your password? Ask your administrator to send a new single-use setup or password reset link.
+          </p>
         </div>
-
       </div>
-    </div>
+    </main>
   );
 }

@@ -3,8 +3,8 @@ import { useParams } from "react-router-dom";
 import { publicApi, parseUtcDate, type PublicShare, ApiError } from "../lib/api";
 import { downloadFiles } from "../lib/download";
 import { useTranslation } from "../i18n";
-import LanguageSwitcher from "./LanguageSwitcher";
 import PasswordInput from "./PasswordInput";
+import TransferCover from "./TransferCover";
 import {
   Download,
   File as FileIcon,
@@ -16,7 +16,6 @@ import {
   Check,
   Unlock,
 } from "lucide-react";
-import logoSvg from "../assets/logo.svg";
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
@@ -152,8 +151,8 @@ export default function SharePage({
 
   if (loading) {
     return (
-      <div className="min-h-dvh page-bg flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+      <div className="grid min-h-32 place-items-center" aria-busy="true">
+        <Loader2 className="size-8 animate-spin text-primary" aria-hidden="true" />
       </div>
     );
   }
@@ -164,17 +163,13 @@ export default function SharePage({
         ? t("share.notFoundDescription")
         : t("share.loadError");
     return (
-      <div className="min-h-dvh page-bg flex items-center justify-center p-4">
-        <div className="surface rounded-lg p-8 max-w-md text-center animate-slide-up">
-          <div className="w-14 h-14 rounded-lg bg-danger/15 flex items-center justify-center mx-auto mb-4">
-            <AlertTriangle className="w-7 h-7 text-danger" />
-          </div>
-          <h2 className="text-xl font-bold text-text-primary mb-2">
-            {t("share.notFound")}
-          </h2>
-          <p className="text-text-muted text-sm">{message}</p>
+      <section className="transfer-page-panel text-center">
+        <div className="mx-auto mb-4 grid size-12 place-items-center rounded-xl bg-danger/10 text-danger">
+          <AlertTriangle className="size-6" aria-hidden="true" />
         </div>
-      </div>
+        <h1 className="text-2xl font-bold">{t("share.notFound")}</h1>
+        <p className="mt-2 text-sm text-text-secondary">{message}</p>
+      </section>
     );
   }
 
@@ -185,177 +180,146 @@ export default function SharePage({
   const needsPassword = share.password_required && !unlocked;
   const canDownload = !isExpired && !isExhausted && (!share.password_required || unlocked);
   const fileCount = displayFiles.length > 0 ? displayFiles.length : share.file_count;
+  const totalBytes = displayFiles.reduce((sum, file) => sum + (file.file_size || 0), 0);
+  let expiryDetail: string | undefined;
+  if (share.expires_at && !isExpired) {
+    const expiry = parseUtcDate(share.expires_at);
+    const msLeft = expiry.getTime() - Date.now();
+    const minsLeft = Math.ceil(msLeft / 60000);
+    const hoursLeft = Math.ceil(msLeft / 3600000);
+    const daysLeft = Math.ceil(msLeft / 86400000);
+    const date = expiry.toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" });
+    const timeLeft = minsLeft < 60
+      ? t("share.minutesLeft", { count: minsLeft })
+      : hoursLeft < 24
+        ? t("share.hoursLeft", { count: hoursLeft })
+        : t("share.daysLeft", { count: daysLeft });
+    expiryDetail = `${t("share.expires", { date })} ${timeLeft}`;
+  }
 
   return (
-    <div className="min-h-dvh page-bg flex items-center justify-center p-4">
-      <div className="w-full max-w-md animate-slide-up">
-        {/* Branding */}
-        <div className="flex items-center justify-center gap-2 mb-4">
-          <img src={logoSvg} alt="iTransfer" className="w-6 h-6" />
-          <span className="text-lg font-bold text-primary font-[family-name:var(--font-display)]">
-            iTransfer
-          </span>
-        </div>
+    <>
+      <TransferCover title={share.title || t("share.defaultTitle")} headingLevel={1} />
+      <div className="transfer-page-panel grid gap-5">
+        {isExpired && (
+          <div role="status" className="flex items-start gap-2 rounded-xl border border-danger/20 bg-danger/10 px-4 py-3 text-sm text-danger">
+            <Clock className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            {t("share.expired")}
+          </div>
+        )}
+        {!isExpired && isExhausted && (
+          <div role="status" className="flex items-start gap-2 rounded-xl border border-warning/20 bg-warning/10 px-4 py-3 text-sm text-warning">
+            <ShieldAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            {t("share.downloadLimit")}
+          </div>
+        )}
 
-        <div className="surface rounded-lg p-6 sm:p-8">
-          {/* Expired / Exhausted */}
-          {isExpired && (
-            <div className="flex items-center gap-2 bg-danger/10 border border-danger/20 rounded-md px-4 py-3 text-sm text-danger mb-5">
-              <Clock className="w-4 h-4 flex-shrink-0" />
-              {t("share.expired")}
-            </div>
+        <ul className="transfer-page-metadata" role="list">
+          <li>
+            <span>
+              {t("share.fileCount", { count: fileCount })}
+              {displayFiles.length > 0 && <> &middot; {formatBytes(totalBytes)}</>}
+            </span>
+          </li>
+          {share.downloads_remaining != null && (
+            <li>{t("share.downloadsLeft", { count: share.downloads_remaining })}</li>
           )}
-          {!isExpired && isExhausted && (
-            <div className="flex items-center gap-2 bg-warning/10 border border-warning/20 rounded-md px-4 py-3 text-sm text-warning mb-5">
-              <ShieldAlert className="w-4 h-4 flex-shrink-0" />
-              {t("share.downloadLimit")}
-            </div>
+          {expiryDetail && (
+            <li>
+              <Clock className="size-3.5 shrink-0" aria-hidden="true" />
+              <span>{expiryDetail}</span>
+            </li>
           )}
+        </ul>
 
-          {/* Title */}
-          <h2 className="text-xl font-bold text-text-primary mb-1">
-            {share.title || t("share.defaultTitle")}
-          </h2>
-          <p className="text-text-muted text-sm mb-5">
-            {t("share.fileCount", { count: fileCount })}
-            {displayFiles.length > 0 && <> &middot; {formatBytes(displayFiles.reduce((sum, f) => sum + (f.file_size || 0), 0))}</>}
-            {share.downloads_remaining != null && (
-              <> &middot; {t("share.downloadsLeft", { count: share.downloads_remaining })}</>
-            )}
-            {share.expires_at && !isExpired && (() => {
-              const msLeft = parseUtcDate(share.expires_at).getTime() - Date.now();
-              const minsLeft = Math.ceil(msLeft / 60000);
-              const hoursLeft = Math.ceil(msLeft / 3600000);
-              const daysLeft = Math.ceil(msLeft / 86400000);
-              const dateStr = parseUtcDate(share.expires_at).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" });
-              const timeLeft = minsLeft < 60
-                ? t("share.minutesLeft", { count: minsLeft })
-                : hoursLeft < 24
-                  ? t("share.hoursLeft", { count: hoursLeft })
-                  : t("share.daysLeft", { count: daysLeft });
-              return <> &middot; {t("share.expires", { date: dateStr })} {timeLeft}</>;
-            })()}
-          </p>
-
-          {/* Locked state: password needed, files hidden */}
-          {needsPassword && (
-            <>
-              <div className="bg-surface-light rounded-md px-4 py-6 text-center mb-5">
-                <Lock className="w-6 h-6 text-text-muted mx-auto mb-2" />
-                <p className="text-sm text-text-muted">
-                  {t("share.lockedFiles", { count: share.file_count })}
-                </p>
+        {needsPassword && (
+          <>
+            <div className="flex items-center gap-3 rounded-xl border border-border bg-surface-light px-4 py-3 text-sm text-text-secondary">
+              <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+                <Lock className="size-4.5" aria-hidden="true" />
               </div>
+              <p>{t("share.lockedFiles", { count: share.file_count })}</p>
+            </div>
 
-              {!isExpired && !isExhausted && (
-                <>
-                  {unlockError && (
-                    <div className="mb-4 bg-danger/10 border border-danger/20 rounded-md px-4 py-3 text-sm text-danger animate-fade-in">
-                      {unlockError}
-                    </div>
-                  )}
-
-                  <div className="mb-4">
-                    <label htmlFor="public-share-password" className="block text-sm font-medium text-text-secondary mb-1.5">
-                      <Lock className="w-3.5 h-3.5 inline mr-1" />
-                      {t("share.password")}
-                    </label>
-                    <PasswordInput
-                      id="public-share-password"
-                      showLabel={t("common.showPassword")}
-                      hideLabel={t("common.hidePassword")}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter" && password) handleUnlock(); }}
-                      className="input-field"
-                      placeholder={t("share.passwordPlaceholder")}
-                    />
+            {!isExpired && !isExhausted && (
+              <form className="grid gap-4" onSubmit={(e) => {
+                e.preventDefault();
+                if (!unlocking) void handleUnlock();
+              }}>
+                {unlockError && (
+                  <div role="alert" className="rounded-xl border border-danger/20 bg-danger/10 px-4 py-3 text-sm text-danger">
+                    {unlockError}
                   </div>
+                )}
 
-                  <button
-                    onClick={handleUnlock}
-                    disabled={unlocking || !password}
-                    className="btn-primary w-full flex items-center justify-center gap-2 py-3 text-base"
-                  >
-                    {unlocking ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        {t("share.verifying")}
-                      </>
-                    ) : (
-                      <>
-                        <Unlock className="w-5 h-5" />
-                        {t("share.unlock")}
-                      </>
-                    )}
-                  </button>
-                </>
-              )}
-            </>
-          )}
-
-          {/* Unlocked state: files visible */}
-          {!needsPassword && displayFiles.length > 0 && (
-            <div className="bg-surface-light rounded-md divide-y divide-border mb-5 max-h-[35dvh] overflow-y-auto animate-fade-in">
-              {displayFiles.map((f, i) => (
-                <div key={i} className="flex items-center gap-3 px-4 py-3">
-                  <div className="w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0">
-                    <FileIcon className="w-4 h-4 text-primary-light" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-text-primary truncate">
-                      {f.original_filename}
-                    </p>
-                    <p className="text-xs text-text-muted">
-                      {formatBytes(f.file_size || 0)}
-                    </p>
-                  </div>
+                <div>
+                  <label htmlFor="public-share-password" className="mb-1.5 block text-sm font-semibold">
+                    {t("share.password")}
+                  </label>
+                  <PasswordInput
+                    id="public-share-password"
+                    showLabel={t("common.showPassword")}
+                    hideLabel={t("common.hidePassword")}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder={t("share.passwordPlaceholder")}
+                    disabled={unlocking}
+                  />
                 </div>
-              ))}
-            </div>
-          )}
 
-          {/* Download Error */}
-          {downloadError && (
-            <div className="mb-4 bg-danger/10 border border-danger/20 rounded-md px-4 py-3 text-sm text-danger animate-fade-in">
-              {downloadError}
-            </div>
-          )}
+                <button type="submit" disabled={unlocking || !password} className="btn-primary transfer-page-action">
+                  {unlocking ? (
+                    <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Unlock className="size-5 shrink-0" aria-hidden="true" />
+                  )}
+                  {t(unlocking ? "share.verifying" : "share.unlock")}
+                </button>
+              </form>
+            )}
+          </>
+        )}
 
-          {/* Download Success */}
-          {downloadStarted && (
-            <div className="mb-4 flex items-center gap-2 bg-success/10 border border-success/20 rounded-md px-4 py-3 text-sm text-success animate-fade-in">
-              <Check className="w-4 h-4 flex-shrink-0" />
-              {t("share.downloadStarted")}
-            </div>
-          )}
+        {!needsPassword && displayFiles.length > 0 && (
+          <ul className="max-h-[35dvh] divide-y divide-border overflow-y-auto rounded-xl border border-border bg-surface-light" role="list">
+            {displayFiles.map((file) => (
+              <li key={file.id} className="flex items-center gap-3 px-3 py-2.5 sm:px-4">
+                <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+                  <FileIcon className="size-4.5" aria-hidden="true" />
+                </div>
+                <p className="min-w-0 flex-1 text-sm font-medium">{file.original_filename}</p>
+                <p className="shrink-0 text-xs tabular-nums text-text-muted">
+                  {formatBytes(file.file_size || 0)}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
 
-          {/* Download Button - only shown when files are visible */}
-          {canDownload && (
-            <button
-              onClick={handleDownload}
-              disabled={downloading}
-              className="btn-primary w-full flex items-center justify-center gap-2 py-3 text-base animate-fade-in"
-            >
-              {downloading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  {t("share.preparing")}
-                </>
-              ) : (
-                <>
-                  <Download className="w-5 h-5" />
-                  {t("share.downloadAll")}
-                </>
-              )}
-            </button>
-          )}
-        </div>
+        {downloadError && (
+          <div role="alert" className="rounded-xl border border-danger/20 bg-danger/10 px-4 py-3 text-sm text-danger">
+            {downloadError}
+          </div>
+        )}
 
-        <div className="flex items-center justify-center mt-4">
-          <LanguageSwitcher />
-        </div>
+        {downloadStarted && (
+          <div role="status" className="flex items-start gap-2 rounded-xl border border-success/20 bg-success/10 px-4 py-3 text-sm text-success">
+            <Check className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            {t("share.downloadStarted")}
+          </div>
+        )}
+
+        {canDownload && (
+          <button type="button" onClick={handleDownload} disabled={downloading} className="btn-primary transfer-page-action">
+            {downloading ? (
+              <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden="true" />
+            ) : (
+              <Download className="size-5 shrink-0" aria-hidden="true" />
+            )}
+            {t(downloading ? "share.preparing" : "share.downloadAll")}
+          </button>
+        )}
       </div>
-    </div>
+    </>
   );
 }

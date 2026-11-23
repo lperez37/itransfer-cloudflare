@@ -1,71 +1,82 @@
-import { useState, useRef, useEffect } from "react";
-import { Globe } from "lucide-react";
+import { useState, useRef, useEffect, useId } from "react";
+import { Check, ChevronDown, Globe } from "lucide-react";
 import { useTranslation, LOCALE_NAMES, LOCALES } from "../i18n";
 
 export default function LanguageSwitcher() {
-  const { locale, setLocale } = useTranslation();
+  const { locale, setLocale, t } = useTranslation();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const optionsId = useId();
 
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
+    if (!open) return;
+    const handler = (e: Event) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
+    document.addEventListener("pointerdown", handler);
+    document.addEventListener("focusin", handler);
+    return () => {
+      document.removeEventListener("pointerdown", handler);
+      document.removeEventListener("focusin", handler);
+    };
+  }, [open]);
+
+  function closeAndFocus() {
+    setOpen(false);
+    trigger.current?.focus();
+  }
 
   return (
-    <div ref={ref} className="relative inline-block">
+    <div
+      ref={ref}
+      className="relative shrink-0"
+      onKeyDown={(event) => {
+        if (open && event.key === "Escape") {
+          event.preventDefault();
+          closeAndFocus();
+        }
+      }}
+    >
       <button
-        onClick={() => setOpen(!open)}
-        className="inline-flex items-center gap-1.5 text-text-muted hover:text-text-secondary transition-colors text-xs"
-        aria-label="Change language"
+        ref={trigger}
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-sm font-medium text-text-secondary transition-colors hover:border-border-light hover:text-text-primary"
+        aria-label={locale === "en" ? "Change language" : t("language.label")}
+        aria-describedby={`${optionsId}-current`}
+        aria-expanded={open}
+        aria-controls={open ? optionsId : undefined}
       >
-        <Globe className="w-3.5 h-3.5" />
-        {LOCALE_NAMES[locale]}
+        <Globe className="size-4 shrink-0" aria-hidden="true" />
+        <span id={`${optionsId}-current`}>{LOCALE_NAMES[locale]}</span>
+        <ChevronDown className="size-3.5 shrink-0" aria-hidden="true" />
       </button>
 
-      {/* Mobile: fixed centered overlay */}
       {open && (
-        <>
-          <div
-            className="sm:hidden fixed inset-0 z-40"
-            onClick={() => setOpen(false)}
-          />
-          <div className="sm:hidden fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 surface border border-border rounded-lg shadow-lg py-2 min-w-[180px] z-50 animate-fade-in">
-            {LOCALES.map((l) => (
+        <ul id={optionsId} className="absolute right-0 top-full z-20 mt-2 max-h-[min(27rem,65dvh)] w-42 overflow-y-auto rounded-2xl border border-border bg-surface p-1.5 shadow-lg" role="list">
+          {LOCALES.map((l) => (
+            <li key={l}>
               <button
-                key={l}
-                onClick={() => { setLocale(l); setOpen(false); }}
-                className={`w-full text-left px-4 py-2 text-sm transition-colors ${
+                type="button"
+                lang={l}
+                aria-current={l === locale ? "true" : undefined}
+                onClick={() => {
+                  setLocale(l);
+                  closeAndFocus();
+                }}
+                className={`flex min-h-11 w-full items-center justify-between gap-2 rounded-lg px-2.5 text-left text-sm transition-colors focus-visible:-outline-offset-2 ${
                   l === locale
-                    ? "text-primary bg-primary/10"
-                    : "text-text-secondary hover:bg-surface-light"
+                    ? "bg-primary/10 font-medium text-primary"
+                    : "text-text-secondary hover:bg-surface-light hover:text-text-primary"
                 }`}
               >
                 {LOCALE_NAMES[l]}
+                {l === locale && <Check className="size-4 shrink-0" aria-hidden="true" />}
               </button>
-            ))}
-          </div>
-
-          {/* Desktop: relative dropdown */}
-          <div className="hidden sm:block absolute bottom-full mb-2 left-1/2 -translate-x-1/2 surface border border-border rounded-md shadow-lg py-1 min-w-[140px] z-50 animate-fade-in">
-            {LOCALES.map((l) => (
-              <button
-                key={l}
-                onClick={() => { setLocale(l); setOpen(false); }}
-                className={`w-full text-left px-3 py-1.5 text-sm transition-colors ${
-                  l === locale
-                    ? "text-primary bg-primary/10"
-                    : "text-text-secondary hover:bg-surface-light"
-                }`}
-              >
-                {LOCALE_NAMES[l]}
-              </button>
-            ))}
-          </div>
-        </>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

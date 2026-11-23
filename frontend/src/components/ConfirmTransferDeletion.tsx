@@ -33,7 +33,7 @@ export default function ConfirmTransferDeletion({
         event.preventDefault();
         if (!progress) onCancel();
       }}
-      className="m-auto w-[calc(100%-2rem)] max-w-md surface rounded-xl p-6 text-text-primary backdrop:bg-background/75"
+      className="m-auto w-[calc(100%-2rem)] max-w-md surface rounded-3xl p-6 text-text-primary backdrop:bg-black/45"
     >
       <h2 id={titleId} className="text-xl font-semibold">{title}</h2>
       <p id={descriptionId} className="mt-2 mb-5 break-words text-sm text-text-secondary">{description}</p>

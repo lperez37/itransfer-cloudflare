@@ -1,6 +1,6 @@
 # iTransfer
 
-**Last updated:** 2026-09-08
+**Last updated:** 2026-11-23
 
 Self-hosted WeTransfer-style file sharing with **private accounts and administrator-managed users**. Share links, file requests, password protection, expiry and download limits run on Cloudflare **Workers** (API + static frontend), **R2** (files) and **D1** (metadata). The application is serverless; optional plain-text account and notification email uses a **separately operated transactional mail service** over HTTPS, not infrastructure included in the Worker deployment.
 
@@ -29,6 +29,7 @@ File bytes never pass through the Worker: the API hands out short-lived presigne
 
 ## Features
 
+- **Web and Android apps** follow the device’s light or dark appearance. A folded paper plane marks outgoing shares and an envelope marks file requests. The web app can be installed from a supported browser. [Android app](android/README.md)
 - **Shares** - upload files, get a link. Optional title, password, expiry, max downloads.
 - **File requests** - ask others to send you files, with optional password, size limit, upload limit and incremental mode.
 - **Human-friendly URLs** - `your.domain/fox-cat-bear` (3-word animal combos) or random tokens.

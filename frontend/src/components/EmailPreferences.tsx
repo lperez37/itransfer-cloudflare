@@ -143,7 +143,7 @@ export default function EmailPreferences({
   return (
     <section
       aria-labelledby={headingId}
-      className="surface rounded-lg p-6 sm:p-8 text-text-primary space-y-5"
+      className="surface rounded-[1.25rem] p-6 sm:p-8 text-text-primary space-y-5"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">

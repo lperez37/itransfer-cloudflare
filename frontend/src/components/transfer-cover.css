@@ -1,0 +1,89 @@
+@layer components {
+  .transfer-cover {
+    --cover-background: #2947af;
+    --cover-tint: #e4e9ff;
+    --color-primary: #fff;
+    --color-primary-light: var(--cover-tint);
+    --color-on-primary: var(--cover-background);
+    --color-text-primary: #fff;
+    --color-text-secondary: var(--cover-tint);
+    --color-text-muted: var(--cover-tint);
+    --color-border-light: color-mix(in srgb, white 65%, var(--cover-background));
+    --focus-color: #fff;
+    container-type: inline-size;
+    overflow: hidden;
+    isolation: isolate;
+    border-radius: 1.5rem;
+    background: var(--cover-background);
+    color: var(--color-text-primary);
+  }
+
+  .transfer-cover--request {
+    --cover-background: #14594f;
+    --cover-tint: #d9f1e9;
+  }
+
+  .transfer-cover__layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    min-height: 8.25rem;
+  }
+
+  .transfer-cover__content {
+    z-index: 1;
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5625rem;
+    padding: clamp(1rem, 4.75cqi, 1.75rem);
+    padding-inline-end: 0.75rem;
+    overflow-wrap: anywhere;
+  }
+
+  .transfer-cover__title {
+    font-size: clamp(1.75rem, 6.9cqi, 2.375rem);
+    font-weight: 700;
+    line-height: 1.13;
+    letter-spacing: -0.039em;
+    text-wrap: balance;
+    hyphens: auto;
+  }
+
+  .transfer-cover__artwork {
+    display: block;
+    /* Android reserves 160dp for text and 34dp for gutters. */
+    width: min(43cqi, 11.25rem, calc(100cqi - 12.125rem));
+    height: auto;
+    overflow: visible;
+    pointer-events: none;
+  }
+
+  .transfer-cover .btn-secondary:hover:not(:disabled) {
+    background: color-mix(in srgb, white 14%, transparent);
+  }
+
+  @container (width < 18.125rem) {
+    .transfer-cover__layout {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .transfer-cover__content {
+      padding-inline-end: clamp(1rem, 4.75cqi, 1.75rem);
+    }
+
+    .transfer-cover__artwork {
+      justify-self: end;
+      width: clamp(6rem, 36cqi, 8rem);
+      overflow: hidden;
+    }
+  }
+}
+
+@media (forced-colors: active) {
+  .transfer-cover {
+    --focus-color: Highlight;
+    border: 1px solid CanvasText;
+  }
+}

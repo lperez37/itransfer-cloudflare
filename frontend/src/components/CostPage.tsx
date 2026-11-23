@@ -137,10 +137,10 @@ export default function CostPage() {
       </div>
 
       {/* Total Cost Card */}
-      <div className="surface rounded-lg p-6 sm:p-8 mb-6">
+      <div className="surface rounded-[1.25rem] p-6 sm:p-8 mb-6">
         <div className="flex items-center gap-4 mb-2">
-          <div className="w-12 h-12 rounded-lg bg-primary flex items-center justify-center">
-            <DollarSign className="w-6 h-6 text-background" />
+          <div className="w-12 h-12 shrink-0 rounded-2xl bg-primary-container flex items-center justify-center">
+            <DollarSign className="w-6 h-6 text-primary" />
           </div>
           <div>
             <p className="text-sm text-text-muted">
@@ -169,7 +169,7 @@ export default function CostPage() {
       </div>
 
       {data.users && (
-        <section className="surface rounded-lg p-5 sm:p-6 mb-6" aria-labelledby="user-costs-title">
+        <section className="surface rounded-[1.25rem] p-5 sm:p-6 mb-6" aria-labelledby="user-costs-title">
           <h2 id="user-costs-title" className="font-semibold text-text-primary">Cost by User</h2>
           <p className="text-sm text-text-muted mt-1 mb-5">
             Gross estimates before shared allowances. Storage reflects current files;
@@ -244,7 +244,7 @@ export default function CostPage() {
       </div>
 
       {/* Cost Breakdown */}
-      <div className="surface rounded-lg p-5 sm:p-6">
+      <div className="surface rounded-[1.25rem] p-5 sm:p-6">
         <h3 className="font-semibold text-text-primary mb-5">
           Monthly Cost Breakdown
         </h3>

@@ -1,18 +1,24 @@
 import { useState, useEffect, useRef, type FormEvent } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { useWorkspace } from "../context/workspace";
 import PasswordInput from "./PasswordInput";
+import TransferCover from "./TransferCover";
 import {
+  ArrowLeft,
   Loader2,
   Check,
   Copy,
-  Link,
+  Link2,
   Shuffle,
   Cat,
   Inbox,
 } from "lucide-react";
+import "./workspace-transfers.css";
 
 export default function CreateRequestPage() {
   const { client: { requests } } = useWorkspace();
+  const { state } = useLocation();
+  const dashboard = { pathname: "/dashboard", search: typeof state?.dashboardSearch === "string" ? state.dashboardSearch : "" };
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
   const [expiryDays, setExpiryDays] = useState(7);
@@ -38,7 +44,7 @@ export default function CreateRequestPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) return;
+    if (!title.trim() || loading) return;
     setError(null);
     setLoading(true);
 
@@ -100,114 +106,93 @@ export default function CreateRequestPage() {
     setAllowIncremental(false);
     setPassword("");
     setRequestLink("");
+    setCopied(false);
     setError(null);
   };
 
-  /* ---------- Done ---------- */
   if (requestLink) {
     return (
-      <div className="max-w-lg mx-auto animate-slide-up">
-        <div className="surface rounded-lg p-8 text-center">
-          <div className="w-14 h-14 rounded-lg bg-success/15 flex items-center justify-center mx-auto mb-4">
-            <Check className="w-7 h-7 text-success" />
-          </div>
-          <h2 className="text-2xl font-bold text-text-primary mb-2">
-            Request created!
-          </h2>
-          <p className="text-text-muted text-sm mb-6">
-            Share this link with anyone to receive files.
-          </p>
-
-          <div className="flex items-center gap-2 bg-surface-light rounded-md p-3 mb-6">
-            <Link className="w-4 h-4 text-primary-light flex-shrink-0" />
-            <span className="text-sm text-text-primary truncate flex-1 text-left font-mono">
+      <div className="workspace-transfer-flow mx-auto grid max-w-3xl gap-4" data-variant="request">
+        <TransferCover title="Request created!" variant="request">
+          <p className="text-sm text-white">Share this link with anyone to receive files.</p>
+        </TransferCover>
+        <section aria-label="Request link" className="surface grid gap-4 rounded-2xl p-4 sm:p-5">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-3 rounded-xl bg-surface-light p-3">
+            <Link2 className="size-4 shrink-0 text-accent" aria-hidden="true" />
+            <a href={requestLink} target="_blank" rel="noopener noreferrer" className="min-w-0 flex-1 font-mono text-sm text-text-primary underline decoration-border hover:decoration-current [overflow-wrap:anywhere]">
               {requestLink}
-            </span>
-            <button
-              onClick={handleCopy}
-              className="btn-primary !px-3 !py-1.5 text-xs flex items-center gap-1.5 flex-shrink-0"
-            >
-              {copied ? (
-                <Check className="w-3.5 h-3.5" />
-              ) : (
-                <Copy className="w-3.5 h-3.5" />
-              )}
+            </a>
+            <button onClick={handleCopy} className="btn-primary workspace-primary-action shrink-0 px-3 text-sm">
+              {copied ? <Check className="size-4" aria-hidden="true" /> : <Copy className="size-4" aria-hidden="true" />}
               {copied ? "Copied!" : "Copy"}
             </button>
           </div>
-
-          <button onClick={handleNew} className="btn-secondary text-sm">
-            Create another request
-          </button>
-        </div>
+          <span className="sr-only" role="status">{copied ? "Link copied" : ""}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <button onClick={handleNew} className="btn-secondary min-h-11 rounded-full text-sm">
+              Create another request
+            </button>
+            <Link to={dashboard} className="workspace-row-action">Back to dashboard</Link>
+          </div>
+        </section>
       </div>
     );
   }
 
-  /* ---------- Form ---------- */
   return (
-    <div className="max-w-2xl mx-auto animate-fade-in">
-      <div className="mb-6">
-        <h1 className="text-2xl sm:text-3xl font-bold text-text-primary tracking-tight">
-          Create File Request
-        </h1>
-        <p className="text-text-muted text-sm mt-1">
-          Generate a link for others to upload files to you
-        </p>
-      </div>
+    <div className="workspace-transfer-flow mx-auto grid max-w-5xl gap-4 sm:gap-5" data-variant="request">
+      <Link to={dashboard} className="workspace-row-action justify-self-start" aria-label="Back to dashboard">
+        <ArrowLeft className="size-4" aria-hidden="true" />
+        Dashboard
+      </Link>
+      <TransferCover title="Create File Request" variant="request">
+        <p className="text-sm text-white">Generate a link for others to upload files to you.</p>
+      </TransferCover>
 
       {error && (
-        <div className="mb-4 bg-danger/10 border border-danger/20 rounded-md px-4 py-3 text-sm text-danger animate-fade-in">
+        <div role="alert" className="workspace-transfer-notice border-danger/25 bg-danger/10 text-danger">
           {error}
         </div>
       )}
 
-      <form onSubmit={handleSubmit}>
-        <div className="surface rounded-lg p-5 sm:p-6 space-y-5">
-          <div className="flex items-center gap-2 mb-1">
-            <Inbox className="w-4 h-4 text-primary-light" />
-            <h3 className="font-semibold text-text-primary">
-              Request Details
-            </h3>
-          </div>
+      <form onSubmit={handleSubmit} className="grid gap-4">
+        <fieldset disabled={loading} className="grid min-w-0 items-start gap-4 md:grid-cols-2">
+          <section aria-labelledby="request-details" className="surface grid min-w-0 gap-4 rounded-2xl p-4 sm:p-5">
+            <h2 id="request-details" className="text-lg font-semibold text-text-primary">Request Details</h2>
 
-          {/* Title */}
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1.5">
-              Title <span className="text-danger">*</span>
-            </label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="input-field"
-              placeholder="e.g., Project deliverables"
-              required
-            />
-          </div>
-
-          {/* Message */}
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1.5">
-              Message{" "}
-              <span className="text-text-muted font-normal">(optional)</span>
-            </label>
-            <textarea
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              rows={3}
-              className="input-field resize-none"
-              placeholder="Instructions for the uploader..."
-            />
-          </div>
-
-          <div className="grid gap-5 sm:grid-cols-2">
-            {/* Expiry */}
             <div>
-              <label className="block text-sm font-medium text-text-secondary mb-1.5">
-                Expires after
+              <label htmlFor="request-title" className="mb-1.5 block text-sm font-medium text-text-primary">
+                Title <span className="text-danger" aria-hidden="true">*</span>
               </label>
+              <input
+                id="request-title"
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="input-field"
+                placeholder="e.g., Project deliverables"
+                required
+              />
+            </div>
+
+            <div>
+              <label htmlFor="request-message" className="mb-1.5 block text-sm font-medium text-text-primary">
+                Message <span className="font-normal text-text-muted">(optional)</span>
+              </label>
+              <textarea
+                id="request-message"
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                rows={3}
+                className="input-field resize-y"
+                placeholder="Instructions for the uploader..."
+              />
+            </div>
+
+            <div>
+              <label htmlFor="request-expiry" className="mb-1.5 block text-sm font-medium text-text-primary">Expires after</label>
               <select
+                id="request-expiry"
                 value={expiryDays}
                 onChange={(e) => setExpiryDays(Number(e.target.value))}
                 className="input-field"
@@ -224,13 +209,62 @@ export default function CreateRequestPage() {
               </select>
             </div>
 
-            {/* Max Uploads */}
+            <fieldset className="min-w-0 space-y-2">
+              <legend className="mb-1.5 text-sm font-medium text-text-primary">Link format</legend>
+              <div className="workspace-transfer-segmented">
+                <button type="button" aria-pressed={idFormat === "random"} onClick={() => setIdFormat("random")} className="text-accent">
+                  <Shuffle className="size-4" aria-hidden="true" />
+                  Random
+                </button>
+                <button type="button" aria-pressed={idFormat === "animals"} onClick={() => setIdFormat("animals")} className="text-accent">
+                  <Cat className="size-4" aria-hidden="true" />
+                  Animal combo
+                </button>
+              </div>
+              {idFormat === "random" ? (
+                <div className="grid gap-1">
+                  <label htmlFor="request-link-length" className="flex flex-wrap justify-between gap-x-2 text-xs text-text-secondary">
+                    <span>Link length</span>
+                    <span className="font-semibold text-accent">{idLength} characters</span>
+                  </label>
+                  <input
+                    id="request-link-length"
+                    type="range"
+                    min="9"
+                    max="64"
+                    value={idLength}
+                    aria-valuetext={`${idLength} characters`}
+                    onChange={(e) => setIdLength(Number(e.target.value))}
+                    className="h-8 w-full accent-accent"
+                  />
+                </div>
+              ) : (
+                <p className="text-xs text-text-secondary">Example: <span className="font-mono">/monkey-eel-cat</span></p>
+              )}
+            </fieldset>
+          </section>
+
+          <section aria-labelledby="request-limits" className="surface grid min-w-0 gap-4 rounded-2xl p-4 sm:p-5">
+            <h2 id="request-limits" className="text-lg font-semibold text-text-primary">Password and upload limits</h2>
+
             <div>
-              <label className="block text-sm font-medium text-text-secondary mb-1.5">
-                Max uploads{" "}
-                <span className="text-text-muted font-normal">(optional)</span>
+              <label htmlFor="request-password" className="mb-1.5 block text-sm font-medium text-text-primary">
+                Password <span className="font-normal text-text-muted">(optional)</span>
+              </label>
+              <PasswordInput
+                id="request-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Protect uploads with a password"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="request-upload-limit" className="mb-1.5 block text-sm font-medium text-text-primary">
+                Max uploads <span className="font-normal text-text-muted">(optional)</span>
               </label>
               <input
+                id="request-upload-limit"
                 type="number"
                 min="1"
                 value={maxUploads}
@@ -240,138 +274,60 @@ export default function CreateRequestPage() {
               />
             </div>
 
-            {/* Max File Size */}
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-text-secondary mb-1.5">
-                Max file size{" "}
-                <span className="text-text-muted font-normal">(optional)</span>
+            <div>
+              <label htmlFor="request-size-limit" className="mb-1.5 block text-sm font-medium text-text-primary">
+                Max file size <span className="font-normal text-text-muted">(optional)</span>
               </label>
               <div className="flex gap-2">
                 <input
+                  id="request-size-limit"
                   type="number"
                   min="1"
                   value={maxFileSize}
                   onChange={(e) => setMaxFileSize(e.target.value)}
-                  className="input-field flex-1"
+                  className="input-field min-w-0 flex-1"
                   placeholder="No limit"
                 />
                 <select
+                  aria-label="File size unit"
                   value={fileSizeUnit}
-                  onChange={(e) =>
-                    setFileSizeUnit(e.target.value as "MB" | "GB")
-                  }
-                  className="input-field !w-20"
+                  onChange={(e) => setFileSizeUnit(e.target.value as "MB" | "GB")}
+                  className="input-field w-20 shrink-0"
                 >
                   <option value="MB">MB</option>
                   <option value="GB">GB</option>
                 </select>
               </div>
             </div>
-          </div>
 
-          {/* Password */}
-          <div>
-            <label htmlFor="request-password" className="block text-sm font-medium text-text-secondary mb-1.5">
-              Password{" "}
-              <span className="text-text-muted font-normal">(optional)</span>
-            </label>
-              <PasswordInput
-                id="request-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="input-field"
-                placeholder="Protect uploads with a password"
-              />
-          </div>
-
-          {/* Link Format */}
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-2">
-              Link format
-            </label>
-            <div className="flex gap-2 mb-3">
-              <button
-                type="button"
-                onClick={() => setIdFormat("random")}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium transition-all flex-1 ${
-                  idFormat === "random"
-                    ? "bg-primary/10 text-primary-light border border-primary/30"
-                    : "bg-surface-light text-text-secondary border border-border hover:border-border-light"
-                }`}
-              >
-                <Shuffle className="w-4 h-4" />
-                Random
-              </button>
-              <button
-                type="button"
-                onClick={() => setIdFormat("animals")}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium transition-all flex-1 ${
-                  idFormat === "animals"
-                    ? "bg-primary/10 text-primary-light border border-primary/30"
-                    : "bg-surface-light text-text-secondary border border-border hover:border-border-light"
-                }`}
-              >
-                <Cat className="w-4 h-4" />
-                Animal combo
-              </button>
-            </div>
-
-            {idFormat === "random" && (
-              <div className="animate-fade-in">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs text-text-muted">
-                    {idLength} characters
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="9"
-                  max="64"
-                  value={idLength}
-                  onChange={(e) => setIdLength(Number(e.target.value))}
-                  className="w-full accent-primary"
-                />
-              </div>
-            )}
-
-            {idFormat === "animals" && (
-              <p className="text-xs text-text-muted animate-fade-in">
-                Example: /monkey-eel-cat
-              </p>
-            )}
-          </div>
-
-          {/* Allow Incremental */}
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-text-secondary">Allow incremental uploads</p>
-              <p className="text-xs text-text-muted mt-0.5">Uploaders can return to add more files</p>
-            </div>
             <button
               type="button"
-              onClick={() => setAllowIncremental(!allowIncremental)}
-              className={`relative w-11 h-6 rounded-full transition-colors ${allowIncremental ? "bg-primary" : "bg-surface-lighter"}`}
+              role="switch"
+              aria-checked={allowIncremental}
+              aria-labelledby="request-incremental-label"
+              aria-describedby="request-incremental-hint"
+              onClick={() => setAllowIncremental((previous) => !previous)}
+              className="flex min-h-11 w-full items-center justify-between gap-3 rounded-xl border border-border px-3 py-2 text-left hover:bg-surface-light"
             >
-              <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-text-primary transition-transform ${allowIncremental ? "translate-x-5" : ""}`} />
+              <span className="min-w-0">
+                <span id="request-incremental-label" className="block text-sm font-medium text-text-primary">Allow incremental uploads</span>
+                <span id="request-incremental-hint" className="block text-xs text-text-secondary">Uploaders can return to add more files.</span>
+              </span>
+              <span aria-hidden="true" className={`relative h-6 w-11 shrink-0 rounded-full border border-border transition-colors ${allowIncremental ? "bg-accent" : "bg-surface-lighter"}`}>
+                <span className={`absolute left-0.5 top-0.5 size-4.5 rounded-full transition-transform ${allowIncremental ? "translate-x-5 bg-background" : "bg-text-secondary"}`} />
+              </span>
             </button>
-          </div>
-        </div>
+          </section>
+        </fieldset>
 
-        {/* Submit */}
-        <div className="mt-6 flex justify-end">
+        <div className="workspace-form-footer">
           <button
             type="submit"
             disabled={loading || !title.trim()}
-            className="btn-primary flex items-center gap-2 text-base px-8 py-3"
+            className="btn-primary workspace-primary-action text-sm"
           >
-            {loading ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Creating...
-              </>
-            ) : (
-              "Create Request"
-            )}
+            {loading ? <Loader2 className="size-4 shrink-0 motion-safe:animate-spin" aria-hidden="true" /> : <Inbox className="size-4 shrink-0" aria-hidden="true" />}
+            {loading ? "Creating..." : "Create Request"}
           </button>
         </div>
       </form>

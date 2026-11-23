@@ -60,7 +60,7 @@ export default function ConfirmPassword({
         e.preventDefault();
         if (!busy) onCancel();
       }}
-      className="m-auto w-[calc(100%-2rem)] max-w-md surface rounded-lg p-6 text-text-primary backdrop:bg-background/75"
+      className="m-auto w-[calc(100%-2rem)] max-w-md surface rounded-3xl p-6 text-text-primary backdrop:bg-black/45"
     >
       <h2 id="confirm-title" className="text-xl font-semibold">
         {title}

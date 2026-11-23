@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
 import {
   publicApi,
@@ -7,9 +7,12 @@ import {
   type PublicRequest,
 } from "../lib/api";
 import { useTranslation } from "../i18n";
+import LanguageSwitcher from "./LanguageSwitcher";
 import SharePage from "./SharePage";
 import RequestPage from "./RequestPage";
 import { Loader2, AlertTriangle, RefreshCw } from "lucide-react";
+import logoSvg from "../assets/logo.svg";
+import "./transfer-page.css";
 
 // HTTP statuses meaning "this resource existed but is gone" - we still render
 // the share/request page (which shows the expired/exhausted state). A plain 404
@@ -27,11 +30,15 @@ function isNotFound(err: unknown): boolean {
 
 export default function PublicResolver() {
   const { id } = useParams<{ id: string }>();
-  const { t } = useTranslation();
+  return <ResolvedPublicPage key={id} id={id} />;
+}
+
+function ResolvedPublicPage({ id }: { id?: string }) {
+  const { t, locale } = useTranslation();
   const [type, setType] = useState<"share" | "request" | null>(null);
   const [share, setShare] = useState<PublicShare | null>(null);
   const [request, setRequest] = useState<PublicRequest | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!!id);
   const [errorKind, setErrorKind] = useState<"notFound" | "retryable" | null>(
     null
   );
@@ -90,60 +97,55 @@ export default function PublicResolver() {
     };
   }, [id, reloadKey]);
 
+  let content: ReactNode;
   if (loading) {
-    return (
-      <div className="min-h-dvh page-bg flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+    content = (
+      <div className="grid min-h-32 place-items-center" aria-busy="true">
+        <Loader2 className="size-8 animate-spin text-primary" aria-hidden="true" />
       </div>
     );
-  }
-
-  if (errorKind === "retryable") {
-    return (
-      <div className="min-h-dvh page-bg flex items-center justify-center p-4">
-        <div className="surface rounded-lg p-8 max-w-md text-center animate-slide-up">
-          <div className="w-14 h-14 rounded-lg bg-warning/15 flex items-center justify-center mx-auto mb-4">
-            <AlertTriangle className="w-7 h-7 text-warning" />
-          </div>
-          <h2 className="text-xl font-bold text-text-primary mb-2">
-            {t("loadError.title")}
-          </h2>
-          <p className="text-text-muted text-sm mb-5">
-            {t("loadError.description")}
-          </p>
+  } else if (errorKind || !id) {
+    const retryable = errorKind === "retryable";
+    content = (
+      <section className="transfer-page-panel text-center">
+        <div className={`mx-auto mb-4 grid size-12 place-items-center rounded-xl ${retryable ? "bg-warning/10 text-warning" : "bg-danger/10 text-danger"}`}>
+          <AlertTriangle className="size-6" aria-hidden="true" />
+        </div>
+        <h1 className="text-2xl font-bold">{t(retryable ? "loadError.title" : "notFound.title")}</h1>
+        <p className="mt-2 text-sm text-text-secondary">
+          {t(retryable ? "loadError.description" : "notFound.description")}
+        </p>
+        {retryable && (
           <button
+            type="button"
             onClick={() => setReloadKey((k) => k + 1)}
-            className="btn-primary inline-flex items-center gap-2 text-sm"
+            className="btn-primary transfer-page-action mt-5"
           >
-            <RefreshCw className="w-4 h-4" />
+            <RefreshCw className="size-4 shrink-0" aria-hidden="true" />
             {t("loadError.retry")}
           </button>
-        </div>
-      </div>
+        )}
+      </section>
     );
+  } else if (type === "share") {
+    // The resolved payload keeps the share page from fetching it a second time.
+    content = <SharePage shareId={id} initialShare={share} />;
+  } else if (type === "request") {
+    content = <RequestPage requestId={id} initialRequest={request} />;
   }
 
-  if (errorKind === "notFound" || !id) {
-    return (
-      <div className="min-h-dvh page-bg flex items-center justify-center p-4">
-        <div className="surface rounded-lg p-8 max-w-md text-center animate-slide-up">
-          <div className="w-14 h-14 rounded-lg bg-danger/15 flex items-center justify-center mx-auto mb-4">
-            <AlertTriangle className="w-7 h-7 text-danger" />
+  return (
+    <main lang={locale} className="transfer-page" data-variant={type ?? undefined}>
+      <div className="transfer-page-column">
+        <header className="transfer-page-header">
+          <div className="transfer-page-brand">
+            <img src={logoSvg} alt="iTransfer" />
+            <span aria-hidden="true">iTransfer</span>
           </div>
-          <h2 className="text-xl font-bold text-text-primary mb-2">
-            {t("notFound.title")}
-          </h2>
-          <p className="text-text-muted text-sm">
-            {t("notFound.description")}
-          </p>
-        </div>
+          <LanguageSwitcher />
+        </header>
+        {content}
       </div>
-    );
-  }
-
-  // Pass the already-resolved payload down so the page doesn't refetch it.
-  if (type === "share") return <SharePage shareId={id} initialShare={share} />;
-  if (type === "request")
-    return <RequestPage requestId={id} initialRequest={request} />;
-  return null;
+    </main>
+  );
 }

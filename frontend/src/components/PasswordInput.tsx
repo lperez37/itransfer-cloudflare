@@ -46,7 +46,7 @@ export default function PasswordInput({
       <button type="button" disabled={disabled} aria-label={label} title={label} aria-controls={inputId}
         onPointerDown={event => event.preventDefault()}
         onClick={event => { event.preventDefault(); toggle(); }}
-        className="absolute right-0 inset-y-0 w-11 flex items-center justify-center rounded-r-md text-text-secondary hover:text-text-primary focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+        className="password-input-toggle absolute right-0 inset-y-0 w-11 flex items-center justify-center rounded-r-md text-text-secondary hover:text-text-primary focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
         {revealed ? <EyeOff className="w-4 h-4" aria-hidden="true" /> : <Eye className="w-4 h-4" aria-hidden="true" />}
       </button>
     </div>

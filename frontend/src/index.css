@@ -1,211 +1,209 @@
 @import "tailwindcss";
 
-/* Self-hosted fonts (was Google Fonts CDN). Self-hosting avoids leaking visitor
-   IPs to Google (GDPR) and keeps typography working offline / when precached. */
 @import "@fontsource-variable/bricolage-grotesque/index.css";
 @import "@fontsource-variable/dm-sans/index.css";
 @import "@fontsource-variable/dm-sans/wght-italic.css";
+@import "./components/transfer-cover.css";
 
-@theme {
-  /* Catppuccin Mocha, aligned with the Android workspace. */
-  --color-primary: #cba6f7;
-  --color-primary-light: #b4befe;
-  --color-accent: #94e2d5;
-  --color-accent-light: #89dceb;
-  --color-background: #11111b;
-  --color-surface: #181825;
-  --color-surface-light: #1e1e2e;
-  --color-surface-lighter: #313244;
-  --color-border: #45475a;
-  --color-border-light: #585b70;
-  --color-text-primary: #cdd6f4;
-  --color-text-secondary: #a6adc8;
-  --color-text-muted: #9399b2;
-  --color-info: #89b4fa;
-  --color-success: #a6e3a1;
-  --color-warning: #f9e2af;
-  --color-danger: #f38ba8;
+@theme static {
+  --color-primary: #294ac6;
+  --color-on-primary: #fff;
+  --color-primary-light: #243e96;
+  --color-primary-container: #e4e9ff;
+  --color-on-primary-container: #243e96;
+  --color-accent: #126958;
+  --color-on-accent: #fff;
+  --color-accent-light: #155344;
+  --color-accent-container: #d9f1e9;
+  --color-on-accent-container: #155344;
+  --color-background: #f6f6f2;
+  --color-surface: #fff;
+  --color-surface-low: #fafaf8;
+  --color-surface-light: #f0f1f3;
+  --color-surface-lighter: #e7e9ee;
+  --color-border: #d2d6dc;
+  --color-border-light: #778190;
+  --color-text-primary: #182135;
+  --color-text-secondary: #515c6c;
+  --color-text-muted: #586476;
+  --color-info: #243e96;
+  --color-success: #126958;
+  --color-warning: #84510e;
+  --color-warning-container: #ffeac9;
+  --color-on-warning-container: #5a380d;
+  --color-danger: #ad3541;
+  --color-danger-container: #ffdce0;
+  --color-on-danger-container: #721f29;
 
   --font-display: "Bricolage Grotesque Variable", "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
   --font-sans: "DM Sans Variable", "DM Sans", ui-sans-serif, system-ui, sans-serif;
 }
 
+/* Existing text-background utilities label filled controls and icons. */
+@theme inline {
+  --text-color-background: var(--color-on-primary);
+}
+
 @layer base {
+  :root {
+    color-scheme: light dark;
+    --focus-color: var(--color-primary);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --color-primary: #afbfff;
+      --color-on-primary: #111722;
+      --color-primary-light: #dce3ff;
+      --color-primary-container: #2b3c6e;
+      --color-on-primary-container: #dce3ff;
+      --color-accent: #88dcc1;
+      --color-on-accent: #111722;
+      --color-accent-light: #bcf2df;
+      --color-accent-container: #203f39;
+      --color-on-accent-container: #bcf2df;
+      --color-background: #111722;
+      --color-surface: #1c2532;
+      --color-surface-low: #19202c;
+      --color-surface-light: #222c3a;
+      --color-surface-lighter: #2b3747;
+      --color-border: #3e4b5c;
+      --color-border-light: #8290a3;
+      --color-text-primary: #eff2fa;
+      --color-text-secondary: #b4bfce;
+      --color-text-muted: #a0aec2;
+      --color-info: #afbfff;
+      --color-success: #88dcc1;
+      --color-warning: #f2c378;
+      --color-warning-container: #4e3d26;
+      --color-on-warning-container: #ffdeab;
+      --color-danger: #ffaeb2;
+      --color-danger-container: #57323a;
+      --color-on-danger-container: #ffd9dc;
+    }
+  }
+
   * {
     scrollbar-width: thin;
     scrollbar-color: var(--color-border-light) transparent;
   }
 
-  :root {
-    color-scheme: dark;
-  }
-
   body {
-    font-family: var(--font-sans);
     background: var(--color-background);
+    color: var(--color-text-primary);
+    font-family: var(--font-sans);
     min-height: 100vh;
-  }
-
-  /* On mobile, 100vh includes the area behind the collapsible URL bar, which
-     pushes vertically-centered content below the visible fold and forces
-     needless scrolling. Dynamic viewport units track the real visible height,
-     so centered pages (public share/request, login) sit correctly on phones. */
-  @supports (min-height: 100dvh) {
-    body {
-      min-height: 100dvh;
-    }
-    .min-h-dvh {
-      min-height: 100dvh;
-    }
+    min-height: 100dvh;
   }
 
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-display);
+    letter-spacing: -0.025em;
   }
 
-  /* Remove the default outline only when focus is not keyboard-driven, so
-     keyboard users keep a visible focus indicator (accessibility). */
-  input:focus:not(:focus-visible),
-  textarea:focus:not(:focus-visible),
-  select:focus:not(:focus-visible) {
-    outline: none;
-  }
-
-  input:focus-visible,
-  textarea:focus-visible,
-  select:focus-visible {
-    outline: 2px solid var(--color-primary);
-    outline-offset: 1px;
+  :where(a[href], button, input, textarea, select, summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--focus-color);
+    outline-offset: 3px;
   }
 }
 
 @layer components {
-  .btn-secondary:disabled,
-  .btn-danger:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
+  .page-bg,
+  .page-bg-animated {
+    background: var(--color-background);
   }
 
-  button:focus-visible,
-  a:focus-visible {
-    outline: 2px solid var(--color-primary-light);
-    outline-offset: 3px;
-  }
-  .surface {
+  .surface,
+  .surface-light,
+  .card {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
   }
 
   .surface-light {
     background: var(--color-surface-light);
-    border: 1px solid var(--color-border);
   }
 
-  .page-bg {
-    background:
-      radial-gradient(ellipse at 30% 0%, color-mix(in srgb, var(--color-primary) 8%, transparent), transparent 52%),
-      radial-gradient(ellipse at 70% 100%, color-mix(in srgb, var(--color-primary-light) 5%, transparent), transparent 50%),
-      var(--color-background);
+  .card {
+    border-radius: 1.25rem;
+    padding: 1.25rem;
   }
 
-  .page-bg-animated {
-    background: var(--color-background);
-    position: relative;
-    overflow: hidden;
+  .card:hover {
+    border-color: var(--color-border-light);
   }
 
-  .page-bg-animated::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background:
-      radial-gradient(ellipse at 30% 0%, color-mix(in srgb, var(--color-primary) 12%, transparent), transparent 52%),
-      radial-gradient(ellipse at 70% 100%, color-mix(in srgb, var(--color-primary-light) 8%, transparent), transparent 55%);
-    animation: ambientShift 10s ease-in-out infinite;
-    z-index: 0;
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger {
+    min-height: 2.75rem;
+    padding: 0.625rem 1.125rem;
+    border-radius: 0.875rem;
+    font-weight: 600;
+    line-height: 1.3;
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s;
   }
 
   .btn-primary {
     background: var(--color-primary);
-    color: var(--color-background);
-    font-weight: 600;
-    padding: 0.625rem 1.5rem;
-    border-radius: 0.375rem;
-    transition: all 0.15s;
+    color: var(--color-on-primary);
     font-family: var(--font-display);
-    letter-spacing: -0.01em;
   }
 
-  .btn-primary:hover {
+  .btn-primary:hover:not(:disabled) {
     background: var(--color-primary-light);
-    box-shadow: 0 0 20px color-mix(in srgb, var(--color-primary-light) 25%, transparent);
-  }
-
-  .btn-primary:active {
-    transform: scale(0.98);
-  }
-
-  .btn-primary:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-    transform: none;
-    box-shadow: none;
   }
 
   .btn-secondary {
-    background: transparent;
-    color: var(--color-text-secondary);
-    font-weight: 500;
-    padding: 0.5rem 1.25rem;
-    border-radius: 0.375rem;
     border: 1px solid var(--color-border-light);
-    transition: all 0.15s;
+    color: var(--color-text-secondary);
   }
 
-  .btn-secondary:hover {
+  .btn-secondary:hover:not(:disabled) {
     background: var(--color-surface-light);
     color: var(--color-text-primary);
-    border-color: var(--color-surface-lighter);
   }
 
   .btn-danger {
-    background: transparent;
+    border: 1px solid var(--color-danger);
     color: var(--color-danger);
-    font-weight: 500;
-    padding: 0.5rem 1.25rem;
-    border-radius: 0.375rem;
-    border: 1px solid color-mix(in srgb, var(--color-danger) 35%, transparent);
-    transition: all 0.15s;
   }
 
-  .btn-danger:hover {
-    background: color-mix(in srgb, var(--color-danger) 12%, transparent);
-    border-color: color-mix(in srgb, var(--color-danger) 50%, transparent);
+  .btn-danger:hover:not(:disabled) {
+    background: var(--color-danger-container);
+    color: var(--color-on-danger-container);
+  }
+
+  .btn-primary:disabled,
+  .btn-secondary:disabled,
+  .btn-danger:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
   }
 
   .input-field {
     width: 100%;
-    background: var(--color-surface-light);
-    border: 1px solid var(--color-border);
-    border-radius: 0.375rem;
+    min-height: 2.75rem;
     padding: 0.625rem 0.875rem;
+    background: var(--color-surface-low);
+    border: 1px solid var(--color-border-light);
+    border-radius: 0.75rem;
     color: var(--color-text-primary);
-    font-size: 0.9375rem;
-    transition: all 0.15s;
+    font-size: 1rem;
+    transition: border-color 0.15s;
   }
 
   .input-field::placeholder {
     color: var(--color-text-muted);
   }
 
+  .input-field:focus {
+    border-color: var(--focus-color);
+  }
+
   .password-input::-ms-reveal,
   .password-input::-ms-clear {
     display: none;
-  }
-
-  .input-field:focus {
-    border-color: var(--color-primary);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 18%, transparent);
   }
 
   input[type="checkbox"].appearance-none {
@@ -216,36 +214,53 @@
   input[type="checkbox"].appearance-none:checked::after {
     content: "";
     position: absolute;
-    left: 4px;
     top: 1px;
+    left: 4px;
     width: 5px;
     height: 9px;
-    border: solid var(--color-background);
+    border: solid var(--color-on-primary);
     border-width: 0 2px 2px 0;
     transform: rotate(45deg);
   }
 
-  .card {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
-    padding: 1.25rem;
-    transition: all 0.15s;
+  .workspace-nav-link,
+  .icon-button {
+    display: inline-flex;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    align-items: center;
+    gap: 0.5rem;
+    border-radius: 0.75rem;
+    color: var(--color-text-secondary);
+    transition: background-color 0.15s, color 0.15s;
   }
 
-  .card:hover {
-    border-color: var(--color-border-light);
+  .workspace-nav-link {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  .icon-button {
+    justify-content: center;
+  }
+
+  .workspace-nav-link:hover,
+  .icon-button:hover {
+    background: var(--color-surface-light);
+    color: var(--color-text-primary);
+  }
+
+  .workspace-nav-link[aria-current="page"],
+  .icon-button[aria-expanded="true"] {
+    background: var(--color-primary-container);
+    color: var(--color-on-primary-container);
   }
 }
 
-@keyframes ambientShift {
-  0%, 100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.6;
-    transform: scale(1.08);
+@layer utilities {
+  input[type="checkbox"].appearance-none:not(:checked) {
+    border-color: var(--color-border-light);
   }
 }
 
@@ -271,12 +286,6 @@
   }
 }
 
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 .animate-fade-in {
   animation: fadeIn 0.3s ease-out;
 }
@@ -285,6 +294,25 @@
   animation: slideUp 0.4s ease-out;
 }
 
-.animate-spin {
-  animation: spin 1s linear infinite;
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (forced-colors: active) {
+  :root {
+    --focus-color: Highlight;
+  }
+
+  input[type="checkbox"].appearance-none {
+    appearance: auto;
+  }
+
+  input[type="checkbox"].appearance-none:checked::after {
+    content: none;
+  }
 }

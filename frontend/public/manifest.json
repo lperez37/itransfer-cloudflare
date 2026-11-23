@@ -6,8 +6,8 @@
   "description": "Self-hosted secure file sharing and request platform",
   "start_url": "/dashboard",
   "display": "standalone",
-  "background_color": "#11111b",
-  "theme_color": "#11111b",
+  "background_color": "#F6F6F2",
+  "theme_color": "#F6F6F2",
   "orientation": "any",
   "icons": [
     {

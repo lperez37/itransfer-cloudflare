@@ -1,28 +1,31 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-import { Link, useNavigate, useOutletContext } from "react-router-dom";
+import { useState, useEffect, useId, useRef } from "react";
+import { Link, useLocation, useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
 import {
   parseUtcDate,
   type Share,
   type FileRequest,
 } from "../lib/api";
 import { downloadFiles } from "../lib/download";
+import { getRequestStatus, getShareStatus, statusLabels, type TransferStatus } from "../lib/transferStatus";
 import { useWorkspace } from "../context/workspace";
 import ConfirmTransferDeletion from "./ConfirmTransferDeletion";
+import TransferCover from "./TransferCover";
 import {
-  Upload,
   Inbox,
   Copy,
   Trash2,
   Check,
-  Clock,
   Download,
-  ArrowUpCircle,
+  Ellipsis,
   FileText,
-  HardDrive,
   Loader2,
+  ListChecks,
   Plus,
   AlertCircle,
+  RefreshCw,
+  Send,
 } from "lucide-react";
+import "./workspace-transfers.css";
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
@@ -48,62 +51,22 @@ function formatDate(iso: string | null | undefined): string {
   return `${day} ${month} ${year}`;
 }
 
-type ItemStatus = "uploading" | "active" | "hidden" | "expired" | "exhausted" | "deleted";
+const STATUS_FILTERS = ["active", "expired", "deleted", "all"] as const;
 
-/** True when the row was deactivated because it expired (cron reclaim),
- * as opposed to being deleted by the admin before its expiry. */
-function reclaimedAtExpiry(deactivatedAt?: string | null, expiresAt?: string | null): boolean {
-  return (
-    !!deactivatedAt &&
-    !!expiresAt &&
-    parseUtcDate(deactivatedAt).getTime() >= parseUtcDate(expiresAt).getTime()
-  );
+function matchesFilter(status: TransferStatus, filter: typeof STATUS_FILTERS[number]) {
+  if (filter === "all") return true;
+  if (filter === "active") return isLive(status) || status === "uploading";
+  return status === filter;
 }
 
-function getShareStatus(share: Share): ItemStatus {
-  if (!share.is_active && !share.confirmed_at) return "uploading";
-  if (!share.is_active) {
-    return reclaimedAtExpiry(share.deactivated_at, share.expires_at) ? "expired" : "deleted";
-  }
-  if (share.expires_at && parseUtcDate(share.expires_at).getTime() < Date.now()) return "expired";
-  if (share.is_paused) return "hidden";
-  if (share.max_downloads != null && share.download_count >= share.max_downloads) return "exhausted";
-  return "active";
-}
-
-function getRequestStatus(req: FileRequest): ItemStatus {
-  if (!req.is_active) {
-    return reclaimedAtExpiry(req.deactivated_at, req.expires_at) ? "expired" : "deleted";
-  }
-  if (req.expires_at && parseUtcDate(req.expires_at).getTime() < Date.now()) return "expired";
-  if (req.max_uploads != null && req.upload_count >= req.max_uploads) return "exhausted";
-  return "active";
-}
-
-/** Statuses whose share/download links still work for recipients. */
-function isLive(status: ItemStatus): boolean {
+function isLive(status: TransferStatus): boolean {
   return status === "active" || status === "exhausted" || status === "hidden";
 }
 
-function StatusBadge({ status }: { status: ItemStatus }) {
-  const config = {
-    active: { bg: "bg-success/15", text: "text-success", label: "Active" },
-    uploading: { bg: "bg-info/15", text: "text-info animate-pulse", label: "Uploading…" },
-    hidden: { bg: "bg-primary-light/15", text: "text-primary-light", label: "Hidden" },
-    expired: { bg: "bg-danger/15", text: "text-danger", label: "Expired" },
-    exhausted: {
-      bg: "bg-warning/15",
-      text: "text-warning",
-      label: "Exhausted",
-    },
-    deleted: { bg: "bg-surface-lighter/50", text: "text-text-muted", label: "Deleted" },
-  }[status];
-
+function StatusBadge({ status }: { status: TransferStatus }) {
   return (
-    <span
-      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${config.bg} ${config.text}`}
-    >
-      {config.label}
+    <span className="workspace-transfer-status" data-status={status}>
+      {statusLabels[status]}
     </span>
   );
 }
@@ -118,8 +81,7 @@ function CopyButton({ text }: { text: string }) {
     };
   }, []);
 
-  const handleCopy = async (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(text);
     } catch {
@@ -133,55 +95,156 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="btn-secondary !px-3 !py-1.5 text-xs flex items-center gap-1.5"
+      aria-label="Copy Link"
+      title={copied ? "Copied!" : "Copy Link"}
+      className="workspace-row-action"
     >
-      {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-      <span>{copied ? "Copied!" : "Copy Link"}</span>
+      {copied ? <Check className="size-4 text-success" aria-hidden="true" /> : <Copy className="size-4" aria-hidden="true" />}
+      <span className="workspace-row-action-label" aria-hidden="true">{copied ? "Copied!" : "Copy Link"}</span>
+      <span className="sr-only" role="status">{copied ? "Link copied" : ""}</span>
     </button>
+  );
+}
+
+function TransferRowActions({
+  kind, title, titleId, copyLink, onDownload, downloading, onDelete,
+}: {
+  kind: "share" | "request";
+  title: string;
+  titleId: string;
+  copyLink?: string;
+  onDownload?: () => void;
+  downloading: boolean;
+  onDelete?: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const group = useRef<HTMLDivElement>(null);
+  const toggle = useRef<HTMLButtonElement>(null);
+  const panelId = useId();
+
+  useEffect(() => {
+    if (!expanded) return;
+    function closeOutside(event: PointerEvent) {
+      if (event.target instanceof Node && !group.current?.contains(event.target)) {
+        setExpanded(false);
+      }
+    }
+    document.addEventListener("pointerdown", closeOutside);
+    return () => document.removeEventListener("pointerdown", closeOutside);
+  }, [expanded]);
+
+  function closeDisclosure() {
+    if (!expanded) return;
+    toggle.current?.focus();
+    setExpanded(false);
+  }
+
+  return (
+    <div
+      ref={group}
+      className="workspace-transfer-actions"
+      role="group"
+      aria-labelledby={titleId}
+      onBlur={(event) => {
+        if (event.relatedTarget instanceof Node && !event.currentTarget.contains(event.relatedTarget)) {
+          setExpanded(false);
+        }
+      }}
+      onKeyDown={(event) => {
+        if (expanded && event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          closeDisclosure();
+        }
+      }}
+    >
+      {copyLink && <CopyButton text={copyLink} />}
+      {(onDownload || onDelete) && (
+        <>
+          <button
+            ref={toggle}
+            aria-label={`Actions for ${title}`}
+            title="More actions"
+            aria-expanded={expanded}
+            aria-controls={panelId}
+            onClick={() => setExpanded((open) => !open)}
+            className="workspace-row-action workspace-overflow-toggle"
+          >
+            <Ellipsis className="size-5" aria-hidden="true" />
+          </button>
+          <div className="workspace-secondary-actions" id={panelId} data-expanded={expanded}>
+            {onDownload && (
+              <button
+                onClick={() => { closeDisclosure(); onDownload(); }}
+                disabled={downloading}
+                aria-label="Download"
+                aria-busy={downloading}
+                title="Download"
+                className="workspace-row-action"
+              >
+                {downloading ? <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden="true" /> : <Download className="size-4" aria-hidden="true" />}
+                <span className="workspace-row-action-label" aria-hidden="true">Download</span>
+              </button>
+            )}
+            {onDelete && (
+              <button
+                onClick={() => { closeDisclosure(); onDelete(); }}
+                aria-label={`Permanently delete ${kind}`}
+                title="Delete permanently"
+                className="workspace-row-action workspace-row-delete"
+              >
+                <Trash2 className="size-4" aria-hidden="true" />
+                <span className="workspace-overflow-label" aria-hidden="true">Delete permanently</span>
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
 export default function DashboardPage() {
   const { client: { shares: sharesApi, requests: requestsApi }, readOnly } = useWorkspace();
   const navigate = useNavigate();
-  const [tab, setTab] = useState<"shares" | "requests">("shares");
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = searchParams.get("tab") === "requests" ? "requests" : "shares";
+  const statusFilter = STATUS_FILTERS.find((filter) => filter === searchParams.get("status")) ?? "active";
   const [shareList, setShareList] = useState<Share[]>([]);
   const [requestList, setRequestList] = useState<FileRequest[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadVersion, setLoadVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ type: "share" | "request"; ids: string[]; title?: string } | null>(null);
   const [selectedShares, setSelectedShares] = useState<Set<string>>(new Set());
   const [selectedRequests, setSelectedRequests] = useState<Set<string>>(new Set());
-  const [statusFilter, setStatusFilter] = useState<"active" | "expired" | "deleted" | "all">("active");
+  const [selectionMode, setSelectionMode] = useState(false);
   const { search } = useOutletContext<{ search: string }>();
   const [deleteProgress, setDeleteProgress] = useState<{ completed: number; total: number } | null>(null);
-
-  const load = useCallback(async (signal?: { cancelled: boolean }) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [s, r] = await Promise.all([
-        sharesApi.list(),
-        requestsApi.list(),
-      ]);
-      if (signal?.cancelled) return;
-      setShareList(s);
-      setRequestList(r);
-    } catch (err) {
-      if (signal?.cancelled) return;
-      setError(err instanceof Error ? err.message : "Failed to load data. Please try again.");
-    } finally {
-      if (!signal?.cancelled) setLoading(false);
-    }
-  }, [sharesApi, requestsApi]);
+  const [downloadingIds, setDownloadingIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    const signal = { cancelled: false };
-    load(signal);
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      setError(null);
+      try {
+        const [shares, requests] = await Promise.all([sharesApi.list(), requestsApi.list()]);
+        if (cancelled) return;
+        setShareList(shares);
+        setRequestList(requests);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load data. Please try again.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    void load();
     return () => {
-      signal.cancelled = true;
+      cancelled = true;
     };
-  }, [load]);
+  }, [loadVersion, sharesApi, requestsApi]);
 
   const permanentlyDelete = async () => {
     if (!confirmDelete || readOnly || deleteProgress) return;
@@ -217,392 +280,321 @@ export default function DashboardPage() {
     setDeleteProgress(null);
   };
 
-  const origin = window.location.origin;
+  const isShare = tab === "shares";
+  const kind = isShare ? "share" : "request";
+  const tabLabel = isShare ? "Shares" : "Requests";
+  const createLabel = isShare ? "New Share" : "New Request";
+  const composerPath = isShare ? "/upload" : "/requests/new";
+  const dashboardState = { dashboardSearch: location.search };
+  const selected = isShare ? selectedShares : selectedRequests;
+  const setSelected = isShare ? setSelectedShares : setSelectedRequests;
+  const selecting = selectionMode || selected.size > 0;
 
-  const matchesFilter = (status: ItemStatus): boolean => {
-    if (statusFilter === "all") return true;
-    if (statusFilter === "active")
-      return status === "active" || status === "exhausted" || status === "uploading" || status === "hidden";
-    return status === statusFilter;
-  };
-  const q = search.trim().toLowerCase();
-  const matchesSearch = (title: string | null | undefined, id: string): boolean =>
-    !q || id.toLowerCase().includes(q) || (title ?? "").toLowerCase().includes(q);
-  const filteredShares = shareList.filter(
-    (s) => matchesFilter(getShareStatus(s)) && matchesSearch(s.title, s.id)
+  const entries = isShare
+    ? shareList.map((share) => ({
+      id: share.id,
+      title: share.title,
+      status: getShareStatus(share),
+      expiresAt: share.expires_at,
+      canDownload: share.file_count > 0,
+      summary: [
+        fileCountLabel(share.file_count),
+        formatBytes(share.total_size),
+        transferCountLabel(share.download_count, share.max_downloads, "download"),
+      ],
+    }))
+    : requestList.map((req) => ({
+      id: req.id,
+      title: req.title,
+      status: getRequestStatus(req),
+      expiresAt: req.expires_at,
+      canDownload: (req.file_count ?? 0) > 0,
+      summary: [
+        req.file_count != null ? fileCountLabel(req.file_count) : null,
+        transferCountLabel(req.upload_count, req.max_uploads, "upload"),
+      ],
+    }));
+  const urlQuery = (searchParams.get("q") ?? "").trim();
+  const query = (search.trim() || urlQuery).toLowerCase();
+  const visible = entries.filter((entry) =>
+    matchesFilter(entry.status, statusFilter)
+    && (!query || entry.id.toLowerCase().includes(query) || entry.title?.toLowerCase().includes(query)),
   );
-  const filteredRequests = requestList.filter(
-    (r) => matchesFilter(getRequestStatus(r)) && matchesSearch(r.title, r.id)
-  );
-  const filterCounts = (statuses: ItemStatus[]) => ({
-    all: statuses.length,
-    active: statuses.filter((s) => s === "active" || s === "exhausted" || s === "uploading" || s === "hidden").length,
-    expired: statuses.filter((s) => s === "expired").length,
-    deleted: statuses.filter((s) => s === "deleted").length,
-  });
-  const counts =
-    tab === "shares"
-      ? filterCounts(shareList.map(getShareStatus))
-      : filterCounts(requestList.map(getRequestStatus));
+  const counts = STATUS_FILTERS.map((filter) => entries.filter((entry) => matchesFilter(entry.status, filter)).length);
+  const titleCounts = new Map<string, number>();
+  for (const { title } of visible) {
+    if (title) titleCounts.set(title, (titleCounts.get(title) ?? 0) + 1);
+  }
+
+  function setViewParam(key: "tab" | "status" | "q", value: string, defaultValue: string) {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      if (value === defaultValue) next.delete(key);
+      else next.set(key, value);
+      return next;
+    }, { preventScrollReset: true });
+  }
+
+  function refresh() {
+    setLoadVersion((version) => version + 1);
+  }
+
+  function selectTab(nextTab: "shares" | "requests") {
+    if (tab === nextTab) return;
+    setSelectionMode(false);
+    setViewParam("tab", nextTab, "shares");
+  }
+
+  function toggleSelectionMode() {
+    if (selecting) setSelected(new Set());
+    setSelectionMode(!selecting);
+  }
+
+  function toggleSelection(id: string) {
+    setSelected((previous) => {
+      const next = new Set(previous);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function download(id: string, title: string) {
+    const key = `${kind}:${id}`;
+    setDownloadingIds((previous) => new Set(previous).add(key));
+    try {
+      const api = isShare ? sharesApi : requestsApi;
+      const result = await api.download(id);
+      await downloadFiles(result.files, title || id);
+    } catch {
+      setError("Download failed.");
+    } finally {
+      setDownloadingIds((previous) => {
+        const next = new Set(previous);
+        next.delete(key);
+        return next;
+      });
+    }
+  }
 
   return (
-    <div className="animate-fade-in">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-text-primary tracking-tight">
-            Dashboard
-          </h1>
-          <p className="text-text-muted text-sm mt-1">
-            {readOnly ? "Browse shares and file requests in this workspace" : "Manage your shares and file requests"}
-          </p>
+    <div className="workspace-dashboard mx-auto grid max-w-6xl gap-4" data-variant={kind}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-lg font-semibold text-text-primary">Dashboard</h1>
+        {!readOnly && (
+          <button
+            onClick={() => navigate(isShare ? "/requests/new" : "/upload", { state: dashboardState })}
+            className="btn-secondary inline-flex min-h-11 items-center gap-2 rounded-full text-sm"
+          >
+            <Plus className="size-4 shrink-0" aria-hidden="true" />
+            {isShare ? "New Request" : "New Share"}
+          </button>
+        )}
+      </div>
+
+      <TransferCover title={tabLabel} variant={kind} headingLevel={2}>
+        {!readOnly && (
+          <button
+            onClick={() => navigate(composerPath, { state: dashboardState })}
+            className="btn-primary inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-left text-sm"
+          >
+            <Plus className="size-4 shrink-0" aria-hidden="true" />
+            {createLabel}
+          </button>
+        )}
+      </TransferCover>
+
+      <div className="workspace-dashboard-toolbar">
+        <div className="workspace-transfer-segmented" role="group" aria-label="Transfer type">
+          <button
+            aria-pressed={isShare}
+            onClick={() => selectTab("shares")}
+            className="text-primary"
+          >
+            <Send className="size-4" aria-hidden="true" />
+            Shares
+          </button>
+          <button
+            aria-pressed={!isShare}
+            onClick={() => selectTab("requests")}
+            className="text-accent"
+          >
+            <Inbox className="size-4" aria-hidden="true" />
+            Requests
+          </button>
         </div>
-        <div className="grid grid-cols-2 gap-3 sm:flex">
+
+        <div className="workspace-dashboard-tools flex items-center">
+          {!readOnly && (
+            <button
+              aria-label={`Select ${tab}`}
+              aria-pressed={selecting}
+              title={selecting ? "Exit selection" : `Select ${tab}`}
+              onClick={toggleSelectionMode}
+              disabled={loading || (!selecting && visible.length === 0)}
+              className="workspace-row-action workspace-select-toggle"
+            >
+              <ListChecks className="size-5" aria-hidden="true" />
+            </button>
+          )}
           <button
-            onClick={() => navigate("/upload")}
-            disabled={readOnly}
-            className="btn-primary flex items-center justify-center gap-2 text-sm"
+            aria-label={`Refresh ${tab}`}
+            title={`Refresh ${tab}`}
+            onClick={refresh}
+            disabled={loading}
+            className="workspace-row-action"
           >
-            <Plus className="w-4 h-4" />
-            New Share
+            <RefreshCw className={`size-4${loading ? " motion-safe:animate-spin" : ""}`} aria-hidden="true" />
           </button>
-          <button
-            onClick={() => navigate("/requests/new")}
-            disabled={readOnly}
-            className="btn-secondary flex items-center justify-center gap-2 text-sm"
-          >
-            <Plus className="w-4 h-4" />
-            New Request
-          </button>
+        </div>
+        <div className="workspace-dashboard-filters flex flex-wrap items-center gap-1" role="group" aria-label="Transfer status">
+          {STATUS_FILTERS.map((filter, index) => (
+            <button
+              key={filter}
+              aria-pressed={statusFilter === filter}
+              onClick={() => { if (statusFilter !== filter) setViewParam("status", filter, "active"); }}
+              className="workspace-status-filter"
+            >
+              {filter.charAt(0).toUpperCase() + filter.slice(1)}
+              <span className="font-normal tabular-nums">{counts[index]}</span>
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex items-center gap-1 mb-4 border-b border-border">
-        <button
-          onClick={() => setTab("shares")}
-          className={`flex flex-1 sm:flex-initial items-center justify-center sm:justify-start gap-2 px-4 py-2.5 text-sm font-medium transition-all border-b-2 -mb-px ${
-            tab === "shares"
-              ? "border-primary text-primary-light"
-              : "border-transparent text-text-secondary hover:text-text-primary"
-          }`}
-        >
-          <Upload className="w-4 h-4" />
-          Shares
-          {filteredShares.length > 0 && (
-            <span className="ml-1 bg-primary/15 text-primary-light text-xs px-1.5 py-0.5 rounded">
-              {filteredShares.length}
-            </span>
-          )}
-        </button>
-        <button
-          onClick={() => setTab("requests")}
-          className={`flex flex-1 sm:flex-initial items-center justify-center sm:justify-start gap-2 px-4 py-2.5 text-sm font-medium transition-all border-b-2 -mb-px ${
-            tab === "requests"
-              ? "border-primary text-primary-light"
-              : "border-transparent text-text-secondary hover:text-text-primary"
-          }`}
-        >
-          <Inbox className="w-4 h-4" />
-          Requests
-          {filteredRequests.length > 0 && (
-            <span className="ml-1 bg-primary/15 text-primary-light text-xs px-1.5 py-0.5 rounded">
-              {filteredRequests.length}
-            </span>
-          )}
-        </button>
-      </div>
-
-      {/* Status filter */}
-      <div className="flex flex-wrap justify-center sm:justify-start gap-2 mb-6">
-        {(["active", "expired", "deleted", "all"] as const).map((f) => (
-          <button
-            key={f}
-            onClick={() => setStatusFilter(f)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors capitalize ${
-              statusFilter === f
-                ? "bg-primary text-background"
-                : "bg-surface-light text-text-secondary hover:text-text-primary"
-            }`}
-          >
-            {f}
-            <span className={statusFilter === f ? "ml-1.5 opacity-75" : "ml-1.5 text-text-muted"}>
-              {counts[f]}
-            </span>
-          </button>
-        ))}
-      </div>
-
-      {/* Error */}
-      {error && (
-        <div role="alert" className="mb-4 flex flex-wrap items-center gap-2 bg-danger/10 border border-danger/20 rounded-md px-4 py-3 text-sm text-danger animate-fade-in">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          {error}
-          <button className="btn-secondary text-sm" onClick={() => load()}>Retry</button>
+      {!search.trim() && urlQuery && (
+        <div className="flex flex-wrap items-center justify-between gap-x-3 rounded-xl bg-surface-light px-3 text-sm text-text-secondary">
+          <p className="min-w-0 py-2 [overflow-wrap:anywhere]">Search results for “{urlQuery}”</p>
+          <button className="workspace-row-action" onClick={() => setViewParam("q", "", "")}>Clear search</button>
         </div>
       )}
 
-      {/* Loading */}
+      {error && (
+        <div role="alert" className="workspace-transfer-notice border-danger/25 bg-danger/10 text-danger">
+          <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          <p className="min-w-0 flex-1">{error}</p>
+          <button className="btn-secondary min-h-11 text-sm" disabled={loading} onClick={refresh}>Retry</button>
+        </div>
+      )}
+
+      {!readOnly && !loading && visible.length > 0 && selecting && (
+        <div role="group" aria-label="Selection actions" className="flex flex-wrap items-center gap-2 rounded-2xl bg-surface-light px-3 py-2">
+          <span role="status" className="mr-auto text-sm font-semibold text-text-primary">{selected.size} selected</span>
+          <button onClick={() => setSelected(new Set(visible.map((entry) => entry.id)))} className="workspace-row-action">
+            Select all
+          </button>
+          <button onClick={() => setSelected(new Set())} disabled={selected.size === 0} className="workspace-row-action">
+            Clear
+          </button>
+          <button
+            onClick={() => setConfirmDelete({ type: kind, ids: [...selected] })}
+            disabled={selected.size === 0}
+            className="btn-danger inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm"
+          >
+            <Trash2 className="size-4 shrink-0" aria-hidden="true" />
+            Delete permanently
+          </button>
+        </div>
+      )}
+
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="w-8 h-8 text-primary animate-spin" />
+        <div role="status" className="flex items-center justify-center gap-2 py-10 text-sm text-text-secondary">
+          <Loader2 className="size-5 text-primary motion-safe:animate-spin" aria-hidden="true" />
+          Loading {tab}…
         </div>
-      ) : tab === "shares" ? (
-        /* Shares */
-        filteredShares.length === 0 ? (
-          <EmptyState
-            icon={<Upload className="w-10 h-10 text-text-muted" />}
-            title="No shares yet"
-            description={readOnly ? "There are no shares in this view. Try another filter." : "Upload files to create your first share link."}
-            action={
-              <button
-                onClick={() => navigate("/upload")}
-                disabled={readOnly}
-                className="btn-primary flex items-center gap-2 text-sm"
-              >
-                <Plus className="w-4 h-4" />
-                Create Share
-              </button>
-            }
-          />
-        ) : (
-          <>
-          {selectedShares.size > 0 && (
-            <div className="mb-4 flex flex-wrap items-center gap-3 bg-surface-light rounded-md px-4 py-3 animate-fade-in">
-              <span className="text-sm text-text-secondary">{selectedShares.size} selected</span>
-              <button
-                onClick={() => setConfirmDelete({ type: "share", ids: [...selectedShares] })}
-                className="btn-danger text-xs !px-3 !py-1.5 flex items-center gap-1.5"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                Delete permanently
-              </button>
-              <button onClick={() => setSelectedShares(new Set(filteredShares.map(s => s.id)))} className="text-xs text-text-muted hover:text-text-primary">
-                Select all
-              </button>
-              <button onClick={() => setSelectedShares(new Set())} className="text-xs text-text-muted hover:text-text-primary">
-                Clear
-              </button>
-            </div>
-          )}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {filteredShares.map((share) => (
-              <div
-                key={share.id}
-                onClick={(e) => {
-                  if ((e.target as HTMLElement).closest("button, input, a")) return;
-                  navigate(`/shares/${share.id}`);
-                }}
-                className="card group animate-fade-in cursor-pointer"
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-start flex-1 min-w-0">
-                    <input
-                      type="checkbox"
-                      disabled={readOnly}
-                      aria-label={`Select ${share.title || share.id}`}
-                      checked={selectedShares.has(share.id)}
-                      onChange={(e) => {
-                        e.stopPropagation();
-                        setSelectedShares(prev => {
-                          const next = new Set(prev);
-                          if (next.has(share.id)) next.delete(share.id); else next.add(share.id);
-                          return next;
-                        });
-                      }}
-                      className="w-4 h-4 rounded accent-primary mr-2 mt-1 appearance-none bg-surface-lighter border border-border checked:bg-primary checked:border-primary"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-text-primary truncate">
-                        <Link to={`/shares/${share.id}`} className="hover:text-primary-light">{share.title || "Untitled share"}</Link>
-                      </h3>
-                      <p className="text-xs text-text-muted mt-0.5 font-mono truncate">
-                        {share.id}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <StatusBadge status={getShareStatus(share)} />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2.5 mb-4 text-sm">
-                  <div className="flex items-center gap-2 text-text-secondary">
-                    <FileText className="w-3.5 h-3.5" />
-                    {share.file_count} file{share.file_count !== 1 ? "s" : ""}
-                  </div>
-                  <div className="flex items-center gap-2 text-text-secondary">
-                    <HardDrive className="w-3.5 h-3.5" />
-                    {formatBytes(share.total_size)}
-                  </div>
-                  <div className="flex items-center gap-2 text-text-secondary">
-                    <Download className="w-3.5 h-3.5" />
-                    {share.download_count}
-                    {share.max_downloads != null
-                      ? ` / ${share.max_downloads}`
-                      : ""}
-                  </div>
-                  <div className="flex items-center gap-2 text-text-secondary">
-                    <Clock className="w-3.5 h-3.5" />
-                    {formatDate(share.expires_at)}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 pt-3 border-t border-border">
-                  {isLive(getShareStatus(share)) && (
-                    <>
-                      <CopyButton text={`${origin}/${share.id}`} />
-                      {share.file_count > 0 && (
-                        <button
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            try {
-                              const res = await sharesApi.download(share.id);
-                              await downloadFiles(res.files, share.title || share.id);
-                            } catch { setError("Download failed."); }
-                          }}
-                          className="btn-secondary !px-3 !py-1.5 text-xs flex items-center gap-1.5"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                          <span>Download</span>
-                        </button>
-                      )}
-                    </>
+      ) : visible.length > 0 ? (
+        <ul className="workspace-transfer-list" role="list" aria-label={tabLabel}>
+          {visible.map((entry) => {
+            const title = entry.title || (isShare ? "Untitled share" : "Untitled request");
+            const isSelected = selected.has(entry.id);
+            const live = isLive(entry.status);
+            const downloading = downloadingIds.has(`${kind}:${entry.id}`);
+            const titleId = `transfer-title-${entry.id}`;
+            const matchesIdOnly = query && entry.id.toLowerCase().includes(query) && !title.toLowerCase().includes(query);
+            const secondaryId = Boolean(entry.title && titleCounts.get(title) === 1 && !matchesIdOnly);
+            const summary = (
+              <>
+                <span className="workspace-transfer-tile">
+                  {isShare ? <FileText className="size-5" aria-hidden="true" /> : <Inbox className="size-5" aria-hidden="true" />}
+                </span>
+                <div className="min-w-0">
+                  <h3 className="workspace-transfer-title" id={titleId} title={title}>{title}</h3>
+                  {normalizeTitle(title) !== normalizeTitle(entry.id) && (
+                    <p className="workspace-transfer-id truncate font-mono text-xs text-text-muted" data-secondary={secondaryId} title={entry.id}>{entry.id}</p>
                   )}
-                  <button
-                    onClick={() => setConfirmDelete({ type: "share", ids: [share.id], title: share.title || "Untitled share" })}
-                    disabled={readOnly}
-                    aria-label="Permanently delete share"
-                    title="Delete permanently"
-                    className="btn-danger !px-3 !py-1.5 ml-auto"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
                 </div>
-              </div>
-            ))}
-          </div>
-          </>
-        )
-      ) : /* Requests */
-      filteredRequests.length === 0 ? (
-        <EmptyState
-          icon={<Inbox className="w-10 h-10 text-text-muted" />}
-          title="No requests yet"
-          description={readOnly ? "There are no requests in this view. Try another filter." : "Create a file request to receive uploads from others."}
-          action={
-            <button
-              onClick={() => navigate("/requests/new")}
-              disabled={readOnly}
-              className="btn-primary flex items-center gap-2 text-sm"
-            >
-              <Plus className="w-4 h-4" />
-              Create Request
-            </button>
-          }
-        />
-      ) : (
-        <>
-        {selectedRequests.size > 0 && (
-          <div className="mb-4 flex flex-wrap items-center gap-3 bg-surface-light rounded-md px-4 py-3 animate-fade-in">
-            <span className="text-sm text-text-secondary">{selectedRequests.size} selected</span>
-            <button
-              onClick={() => setConfirmDelete({ type: "request", ids: [...selectedRequests] })}
-              className="btn-danger text-xs !px-3 !py-1.5 flex items-center gap-1.5"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              Delete permanently
-            </button>
-            <button onClick={() => setSelectedRequests(new Set(filteredRequests.map(r => r.id)))} className="text-xs text-text-muted hover:text-text-primary">
-              Select all
-            </button>
-            <button onClick={() => setSelectedRequests(new Set())} className="text-xs text-text-muted hover:text-text-primary">
-              Clear
-            </button>
-          </div>
-        )}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {filteredRequests.map((req) => (
-            <div key={req.id} className="card group animate-fade-in">
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex items-start flex-1 min-w-0">
-                  <input
-                    type="checkbox"
-                    disabled={readOnly}
-                    aria-label={`Select ${req.title || req.id}`}
-                    checked={selectedRequests.has(req.id)}
-                    onChange={(e) => {
-                      e.stopPropagation();
-                      setSelectedRequests(prev => {
-                        const next = new Set(prev);
-                        if (next.has(req.id)) next.delete(req.id); else next.add(req.id);
-                        return next;
-                      });
-                    }}
-                    className="w-4 h-4 rounded accent-primary mr-2 mt-1 appearance-none bg-surface-lighter border border-border checked:bg-primary checked:border-primary"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-text-primary truncate">
-                      {req.title}
-                    </h3>
-                    <p className="text-xs text-text-muted mt-0.5 font-mono truncate">
-                      {req.id}
-                    </p>
+                <div className="workspace-transfer-metadata">
+                  <p>{entry.summary.filter(Boolean).join(" · ")}</p>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <StatusBadge status={entry.status} />
+                    {entry.status !== "expired" && <span>{formatDate(entry.expiresAt)}</span>}
                   </div>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <StatusBadge status={getRequestStatus(req)} />
+              </>
+            );
+            return (
+              <li key={entry.id} className="workspace-transfer-row" data-selected={isSelected} data-selecting={selecting}>
+                <div className="workspace-transfer-row-main">
+                  {!readOnly && (
+                    <label className="workspace-transfer-checkbox">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${entry.title || entry.id}`}
+                        checked={isSelected}
+                        onChange={() => toggleSelection(entry.id)}
+                      />
+                    </label>
+                  )}
+                  {isShare ? (
+                    <Link
+                      to={`/shares/${entry.id}`}
+                      state={dashboardState}
+                      aria-labelledby={titleId}
+                      className="workspace-transfer-summary"
+                    >
+                      {summary}
+                    </Link>
+                  ) : (
+                    <div className="workspace-transfer-summary">{summary}</div>
+                  )}
                 </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2.5 mb-4 text-sm">
-                <div className="flex items-center gap-2 text-text-secondary">
-                  <ArrowUpCircle className="w-3.5 h-3.5" />
-                  {req.upload_count}
-                  {req.max_uploads != null ? ` / ${req.max_uploads}` : ""}{" "}
-                  uploads
-                </div>
-                <div className="flex items-center gap-2 text-text-secondary">
-                  <Clock className="w-3.5 h-3.5" />
-                  {formatDate(req.expires_at)}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 pt-3 border-t border-border">
-                {isLive(getRequestStatus(req)) && (
-                  <>
-                    <CopyButton text={`${origin}/${req.id}`} />
-                    {(req.file_count ?? 0) > 0 && (
-                      <button
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          try {
-                            const res = await requestsApi.download(req.id);
-                            await downloadFiles(res.files, req.title || req.id);
-                          } catch { setError("Download failed."); }
-                        }}
-                        className="btn-secondary !px-3 !py-1.5 text-xs flex items-center gap-1.5"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        <span>Download</span>
-                      </button>
-                    )}
-                  </>
+                {(live || !readOnly) && (
+                  <TransferRowActions
+                    kind={kind}
+                    title={title}
+                    titleId={titleId}
+                    copyLink={live ? `${window.location.origin}/${entry.id}` : undefined}
+                    onDownload={live && entry.canDownload ? () => download(entry.id, entry.title || entry.id) : undefined}
+                    downloading={downloading}
+                    onDelete={readOnly ? undefined : () => setConfirmDelete({ type: kind, ids: [entry.id], title })}
+                  />
                 )}
-                <button
-                  onClick={() => setConfirmDelete({ type: "request", ids: [req.id], title: req.title })}
-                  disabled={readOnly}
-                  aria-label="Permanently delete request"
-                  title="Delete permanently"
-                  className="btn-danger !px-3 !py-1.5 ml-auto"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          ))}
+              </li>
+            );
+          })}
+        </ul>
+      ) : !error && (
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-surface p-4">
+          <span className="workspace-transfer-tile">
+            {isShare ? <Send className="size-5" aria-hidden="true" /> : <Inbox className="size-5" aria-hidden="true" />}
+          </span>
+          <div className="min-w-0 flex-1">
+            <h3 className="font-semibold text-text-primary">
+              {entries.length === 0 && !query ? `No ${tab} yet` : `No matching ${tab}`}
+            </h3>
+            {(entries.length > 0 || query) && (
+              <p className="text-sm text-text-secondary">Try another filter or search.</p>
+            )}
+          </div>
+          {!readOnly && entries.length === 0 && !query && (
+            <button
+              onClick={() => navigate(composerPath, { state: dashboardState })}
+              className="workspace-row-action"
+            >
+              {isShare ? "Create Share" : "Create Request"}
+            </button>
+          )}
         </div>
-        </>
       )}
 
       {confirmDelete && (
@@ -619,25 +611,14 @@ export default function DashboardPage() {
   );
 }
 
-function EmptyState({
-  icon,
-  title,
-  description,
-  action,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-  action: React.ReactNode;
-}) {
-  return (
-    <div className="flex flex-col items-center justify-center py-20 text-center animate-fade-in">
-      <div className="w-20 h-20 rounded-lg bg-surface-light flex items-center justify-center mb-4">
-        {icon}
-      </div>
-      <h3 className="text-lg font-semibold text-text-primary mb-1">{title}</h3>
-      <p className="text-sm text-text-muted mb-6 max-w-sm">{description}</p>
-      {action}
-    </div>
-  );
+function fileCountLabel(count: number) {
+  return `${count} ${count === 1 ? "file" : "files"}`;
+}
+
+function transferCountLabel(count: number, limit: number | undefined, noun: "download" | "upload") {
+  return `${count}${limit != null ? ` / ${limit}` : ""} ${noun}${(limit ?? count) === 1 ? "" : "s"}`;
+}
+
+function normalizeTitle(title: string) {
+  return title.normalize("NFKD").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
 }

@@ -164,7 +164,7 @@ export default function UsersPage() {
       )}
       {link && (
         <section
-          className="surface rounded-lg p-5 space-y-3"
+          className="surface rounded-[1.25rem] p-5 space-y-3"
           aria-label="Single-use password link"
         >
           <div
@@ -319,7 +319,7 @@ export default function UsersPage() {
           No users match your search. Try another name or email.
         </p>
       ) : (
-        <div className="surface rounded-lg divide-y divide-border">
+        <div className="surface rounded-[1.25rem] divide-y divide-border">
           {filtered.map((row) => (
             <article
               key={row.id}
@@ -497,7 +497,7 @@ function UserEditor({
     if (name.trim()) onSave({ name: name.trim(), email: email.trim(), role });
   }
   return (
-    <section className="surface rounded-lg p-5">
+    <section className="surface rounded-[1.25rem] p-5">
       <h2 className="text-lg font-semibold mb-4">
         {user ? `Edit ${user.name}` : "Add user"}
       </h2>

@@ -8,11 +8,11 @@ import {
   ApiError,
 } from "../lib/api";
 import { useUpload } from "../hooks/useUpload";
-import { useTranslation } from "../i18n";
+import { useTranslation, type Locale } from "../i18n";
 import FileDropzone from "./FileDropzone";
-import LanguageSwitcher from "./LanguageSwitcher";
 import ProgressBar from "./ProgressBar";
 import PasswordInput from "./PasswordInput";
+import TransferCover from "./TransferCover";
 import {
   Loader2,
   AlertTriangle,
@@ -24,7 +24,19 @@ import {
   Lock,
   Clock,
 } from "lucide-react";
-import logoSvg from "../assets/logo.svg";
+
+const removeFileLabels: Record<Locale, string> = {
+  en: "Remove file",
+  es: "Quitar archivo",
+  fr: "Retirer le fichier",
+  pt: "Remover ficheiro",
+  nl: "Bestand verwijderen",
+  it: "Rimuovi il file",
+  ca: "Treu el fitxer",
+  pl: "Usuń plik",
+  da: "Fjern fil",
+  sv: "Ta bort fil",
+};
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
@@ -162,7 +174,7 @@ export default function RequestPage({
           setUploadError(err.message);
         }
       } else {
-        setUploadError(err instanceof Error ? err.message : "Upload failed");
+        setUploadError(err instanceof Error ? err.message : t("request.uploadFailed"));
       }
       setStep("select");
     }
@@ -170,8 +182,8 @@ export default function RequestPage({
 
   if (loading) {
     return (
-      <div className="min-h-dvh page-bg flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+      <div className="grid min-h-32 place-items-center" aria-busy="true">
+        <Loader2 className="size-8 animate-spin text-accent" aria-hidden="true" />
       </div>
     );
   }
@@ -182,260 +194,239 @@ export default function RequestPage({
         ? t("request.notFoundDescription")
         : t("request.loadError");
     return (
-      <div className="min-h-dvh page-bg flex items-center justify-center p-4">
-        <div className="surface rounded-lg p-8 max-w-md text-center animate-slide-up">
-          <div className="w-14 h-14 rounded-lg bg-danger/15 flex items-center justify-center mx-auto mb-4">
-            <AlertTriangle className="w-7 h-7 text-danger" />
-          </div>
-          <h2 className="text-xl font-bold text-text-primary mb-2">
-            {t("request.notFound")}
-          </h2>
-          <p className="text-text-muted text-sm">{message}</p>
+      <section className="transfer-page-panel text-center">
+        <div className="mx-auto mb-4 grid size-12 place-items-center rounded-xl bg-danger/10 text-danger">
+          <AlertTriangle className="size-6" aria-hidden="true" />
         </div>
-      </div>
+        <h1 className="text-2xl font-bold">{t("request.notFound")}</h1>
+        <p className="mt-2 text-sm text-text-secondary">{message}</p>
+      </section>
     );
   }
 
   if (!req) return null;
+  const expiry = req.expires_at && parseUtcDate(req.expires_at).toLocaleDateString(locale, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 
   return (
-    <div className="min-h-dvh page-bg flex items-center justify-center p-4">
-      <div className="w-full max-w-lg animate-slide-up">
-        {/* Branding */}
-        <div className="flex items-center justify-center gap-2 mb-4">
-          <img src={logoSvg} alt="iTransfer" className="w-6 h-6" />
-          <span className="text-lg font-bold text-primary font-[family-name:var(--font-display)]">
-            iTransfer
-          </span>
-        </div>
+    <>
+      <TransferCover variant="request" title={req.title} headingLevel={1} />
+      <div className="transfer-page-panel grid gap-5">
+        {isExhausted && (
+          <div role="status" className="flex items-start gap-2 rounded-xl border border-warning/20 bg-warning/10 px-4 py-3 text-sm text-warning">
+            <ShieldAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            {t("request.uploadLimit")}
+          </div>
+        )}
 
-        <div className="surface rounded-lg p-6 sm:p-8">
-          {/* Exhausted */}
-          {isExhausted && (
-            <div className="flex items-center gap-2 bg-warning/10 border border-warning/20 rounded-md px-4 py-3 text-sm text-warning mb-5">
-              <ShieldAlert className="w-4 h-4 flex-shrink-0" />
-              {t("request.uploadLimit")}
-            </div>
-          )}
-
-          {/* Done */}
-          {step === "done" && (
-            <div className="text-center animate-fade-in">
-              <div className="w-14 h-14 rounded-lg bg-success/15 flex items-center justify-center mx-auto mb-4">
-                <Check className="w-7 h-7 text-success" />
+        {step === "done" && (
+          <div className="text-center">
+            <div role="status">
+              <div className="mx-auto mb-3 grid size-12 place-items-center rounded-xl bg-success/15 text-success">
+                <Check className="size-6" aria-hidden="true" />
               </div>
-              <h2 className="text-xl font-bold text-text-primary mb-2">
-                {t("request.filesUploaded")}
-              </h2>
-              <p className="text-text-muted text-sm">
-                {t("request.filesDelivered")}
-              </p>
-              {req.allow_incremental && (
-                <button
-                  onClick={() => {
-                    setStep("select"); setFiles([]); setMessage(""); setFileIdByFile(new Map());
-                    if (requestId) {
-                      publicApi.getRequest(requestId).then(setReq).catch(() => {});
-                    }
-                  }}
-                  className="btn-secondary text-sm mt-4"
-                >
-                  {t("request.uploadMore")}
-                </button>
-              )}
+              <h2 className="text-xl font-bold">{t("request.filesUploaded")}</h2>
+              <p className="mt-1 text-sm text-text-secondary">{t("request.filesDelivered")}</p>
             </div>
-          )}
+            {req.allow_incremental && (
+              <button
+                type="button"
+                onClick={() => {
+                  setStep("select");
+                  setFiles([]);
+                  setMessage("");
+                  setFileIdByFile(new Map());
+                  if (requestId) {
+                    publicApi.getRequest(requestId).then(setReq).catch(() => {});
+                  }
+                }}
+                className="btn-secondary transfer-page-action mt-5"
+              >
+                {t("request.uploadMore")}
+              </button>
+            )}
+          </div>
+        )}
 
-          {/* Uploading */}
-          {step === "uploading" && (
-            <div className="animate-fade-in">
-              <h2 className="text-xl font-bold text-text-primary mb-1">
-                {t("request.uploading")}
-              </h2>
-              <p className="text-text-muted text-sm mb-6">
-                {t("request.keepOpen")}
-              </p>
-              <div className="space-y-4">
-                {files.map((f, idx) => {
-                  const fileId = fileIdByFile.get(f);
-                  const p = (fileId ? progress.get(fileId) : undefined) || {
-                    loaded: 0,
-                    total: f.size,
-                    status: "pending" as const,
-                  };
-                  const pct = p.total > 0 ? (p.loaded / p.total) * 100 : 0;
-                  return (
-                    <div key={idx}>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-sm text-text-primary truncate max-w-[70%]">
-                          {f.name}
-                        </span>
-                        <span className="text-xs text-text-muted">
-                          {p.status === "done"
-                            ? t("request.complete")
-                            : p.status === "uploading"
-                              ? `${Math.round(pct)}%`
-                              : p.status === "error"
-                                ? t("request.uploadFailed")
-                                : t("request.waiting")}
-                        </span>
-                      </div>
-                      <ProgressBar
-                        value={pct}
-                        color={
-                          p.status === "done"
-                            ? "success"
-                            : p.status === "error"
-                              ? "danger"
-                              : "accent"
-                        }
-                      />
+        {step === "uploading" && (
+          <section className="grid gap-4">
+            <div role="status" className="flex items-start gap-3">
+              <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-accent/10 text-accent">
+                <Loader2 className="size-5 animate-spin" aria-hidden="true" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold">{t("request.uploading")}</h2>
+                <p className="text-sm text-text-secondary">{t("request.keepOpen")}</p>
+              </div>
+            </div>
+
+            <ul className="grid gap-2.5" role="list">
+              {files.map((file, idx) => {
+                const fileId = fileIdByFile.get(file);
+                const p = (fileId ? progress.get(fileId) : undefined) || {
+                  loaded: 0,
+                  total: file.size,
+                  status: "pending" as const,
+                };
+                const pct = p.total > 0 ? (p.loaded / p.total) * 100 : 0;
+                const statusText = p.status === "done"
+                  ? t("request.complete")
+                  : p.status === "uploading"
+                    ? `${Math.round(pct)}%`
+                    : p.status === "error"
+                      ? t("request.uploadFailed")
+                      : t("request.waiting");
+                return (
+                  <li key={idx} className="grid gap-2 rounded-xl border border-border bg-surface-light p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="min-w-0 text-sm font-medium">{file.name}</span>
+                      <span className="max-w-[45%] shrink-0 text-right text-xs tabular-nums text-text-secondary">{statusText}</span>
                     </div>
-                  );
-                })}
-              </div>
-              {isUploading && (
-                <div className="flex items-center justify-center gap-2 mt-6 text-sm text-primary-light">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  {t("request.uploading")}
-                </div>
-              )}
-            </div>
-          )}
+                    <ProgressBar
+                      value={pct}
+                      label={file.name}
+                      valueText={statusText}
+                      color={
+                        p.status === "done"
+                          ? "success"
+                          : p.status === "error"
+                            ? "danger"
+                            : "accent"
+                      }
+                    />
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
 
-          {/* Select */}
-          {step === "select" && !isExhausted && (
-            <>
-              <h2 className="text-xl font-bold text-text-primary mb-1">
-                {req.title}
-              </h2>
-              {req.message && (
-                <p className="text-text-secondary text-sm mb-4 whitespace-pre-wrap">
-                  {req.message}
-                </p>
-              )}
-              <p className="text-xs text-text-muted mb-4">
-                {req.expires_at && (
-                  <span className="inline-flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
-                    {t("request.expires", { date: parseUtcDate(req.expires_at).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" }) })}
-                  </span>
+        {step === "select" && !isExhausted && (
+          <>
+            {req.message && (
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-text-secondary">
+                {req.message}
+              </p>
+            )}
+            {(expiry || req.remaining_uploads != null || !!req.max_file_size) && (
+              <ul className="transfer-page-metadata" role="list">
+                {expiry && (
+                  <li>
+                    <Clock className="size-3.5 shrink-0" aria-hidden="true" />
+                    <span>{t("request.expires", { date: expiry })}</span>
+                  </li>
                 )}
                 {req.remaining_uploads != null && (
-                  <>
-                    {req.expires_at && <> &middot; </>}
-                    {t("request.uploadsRemaining", { count: req.remaining_uploads })}
-                  </>
+                  <li>{t("request.uploadsRemaining", { count: req.remaining_uploads })}</li>
                 )}
-                {req.max_file_size && (
-                  <> &middot; {t("request.maxFileSize", { size: formatBytes(req.max_file_size) })}</>
+                {!!req.max_file_size && (
+                  <li>{t("request.maxFileSize", { size: formatBytes(req.max_file_size) })}</li>
                 )}
-              </p>
+              </ul>
+            )}
 
-              {uploadError && (
-                <div className="mb-4 bg-danger/10 border border-danger/20 rounded-md px-4 py-3 text-sm text-danger animate-fade-in">
-                  {uploadError}
-                </div>
-              )}
+            {uploadError && (
+              <div role="alert" className="rounded-xl border border-danger/20 bg-danger/10 px-4 py-3 text-sm text-danger">
+                {uploadError}
+              </div>
+            )}
 
-              {req.password_required && (
-                <div className="mb-4">
-                  <label htmlFor="public-request-password" className="block text-sm font-medium text-text-secondary mb-1.5">
-                    <Lock className="w-3.5 h-3.5 inline mr-1" />
-                    {t("request.passwordRequired")}
-                  </label>
-                  <PasswordInput
-                    id="public-request-password"
-                    showLabel={t("common.showPassword")}
-                    hideLabel={t("common.hidePassword")}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="input-field"
-                    placeholder={t("request.passwordPlaceholder")}
-                  />
-                </div>
-              )}
-
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-text-secondary mb-1.5">
-                  {t("request.message")} <span className="text-text-muted font-normal">{t("request.messageOptional")}</span>
+            {req.password_required && (
+              <div>
+                <label htmlFor="public-request-password" className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold">
+                  <Lock className="size-3.5 shrink-0 text-text-muted" aria-hidden="true" />
+                  {t("request.passwordRequired")}
                 </label>
-                <textarea
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  rows={2}
-                  className="input-field resize-none"
-                  placeholder={t("request.messagePlaceholder")}
+                <PasswordInput
+                  id="public-request-password"
+                  showLabel={t("common.showPassword")}
+                  hideLabel={t("common.hidePassword")}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder={t("request.passwordPlaceholder")}
                 />
               </div>
+            )}
 
-              {req.allow_incremental && req.files && req.files.length > 0 && (
-                <div className="mb-4">
-                  <p className="text-xs text-text-muted mb-2">{t("request.previousFiles")}</p>
-                  <div className="bg-surface-light rounded-md divide-y divide-border max-h-32 overflow-y-auto">
-                    {req.files.map((f) => (
-                      <div key={f.id} className="flex items-center gap-3 px-4 py-2">
-                        <FileIcon className="w-4 h-4 text-text-muted flex-shrink-0" />
-                        <span className="text-sm text-text-secondary truncate">{f.original_filename}</span>
-                        <span className="text-xs text-text-muted ml-auto">{formatBytes(f.file_size)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <FileDropzone
-                onFiles={handleAddFiles}
-                onRejected={handleRejectedFiles}
-                maxFileSize={req.max_file_size}
-                dropLabel={t("dropzone.drop")}
-                dragLabel={t("dropzone.drag")}
-                browseLabel={t("dropzone.browse")}
+            <div>
+              <label htmlFor="public-request-message" className="mb-1.5 block text-sm font-semibold">
+                {t("request.message")} <span className="font-normal text-text-muted">{t("request.messageOptional")}</span>
+              </label>
+              <textarea
+                id="public-request-message"
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                rows={2}
+                className="input-field block resize-y"
+                placeholder={t("request.messagePlaceholder")}
               />
+            </div>
 
-              {files.length > 0 && (
-                <div className="mt-4 bg-surface-light rounded-md divide-y divide-border max-h-48 overflow-y-auto">
-                  {files.map((f, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center gap-3 px-4 py-2.5 group"
-                    >
-                      <FileIcon className="w-4 h-4 text-primary-light flex-shrink-0" />
-                      <span className="text-sm text-text-primary truncate flex-1">
-                        {f.name}
-                      </span>
-                      <span className="text-xs text-text-muted">
-                        {formatBytes(f.size)}
-                      </span>
+            <FileDropzone
+              onFiles={handleAddFiles}
+              onRejected={handleRejectedFiles}
+              maxFileSize={req.max_file_size}
+              dropLabel={t("dropzone.drop")}
+              dragLabel={t("dropzone.drag")}
+              browseLabel={t("dropzone.browse")}
+            />
+
+            {files.length > 0 && (
+              <>
+                <ul className="max-h-48 divide-y divide-border overflow-y-auto rounded-xl border border-border bg-surface-light" role="list">
+                  {files.map((file, i) => (
+                    <li key={i} className="flex items-center gap-2 px-3 py-1.5 sm:gap-3">
+                      <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-accent/10 text-accent">
+                        <FileIcon className="size-4.5" aria-hidden="true" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p id={`request-file-${i}`} className="text-sm font-medium">{file.name}</p>
+                        <p className="text-xs tabular-nums text-text-muted">{formatBytes(file.size)}</p>
+                      </div>
                       <button
+                        type="button"
                         onClick={() => handleRemove(i)}
-                        className="p-1 rounded hover:bg-danger/10 text-text-muted hover:text-danger transition-colors"
+                        aria-label={removeFileLabels[locale]}
+                        aria-describedby={`request-file-${i}`}
+                        className="grid size-11 shrink-0 place-items-center rounded-xl text-text-muted transition-colors hover:bg-danger/10 hover:text-danger"
                       >
-                        <X className="w-3.5 h-3.5" />
+                        <X className="size-4" aria-hidden="true" />
                       </button>
-                    </div>
+                    </li>
                   ))}
-                </div>
-              )}
-
-              {files.length > 0 && (
+                </ul>
                 <button
+                  type="button"
                   onClick={handleUpload}
                   disabled={isUploading || (req.password_required && !password)}
-                  className="btn-primary w-full flex items-center justify-center gap-2 py-3 mt-5 text-base"
+                  className="btn-primary transfer-page-action"
                 >
-                  <Upload className="w-5 h-5" />
+                  <Upload className="size-5 shrink-0" aria-hidden="true" />
                   {t("request.uploadButton", { count: files.length })}
                 </button>
-              )}
-            </>
-          )}
-        </div>
+              </>
+            )}
 
-        <div className="flex items-center justify-center mt-4">
-          <LanguageSwitcher />
-        </div>
+            {req.allow_incremental && req.files && req.files.length > 0 && (
+              <section className="grid gap-2">
+                <h2 className="text-base font-semibold">{t("request.previousFiles")}</h2>
+                <ul className="max-h-40 divide-y divide-border overflow-y-auto rounded-xl border border-border bg-surface-light" role="list">
+                  {req.files.map((file) => (
+                    <li key={file.id} className="flex items-center gap-3 px-3 py-2.5">
+                      <FileIcon className="size-4 shrink-0 text-text-muted" aria-hidden="true" />
+                      <span className="min-w-0 flex-1 text-sm text-text-secondary">{file.original_filename}</span>
+                      <span className="shrink-0 text-xs tabular-nums text-text-muted">{formatBytes(file.file_size)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+          </>
+        )}
       </div>
-    </div>
+    </>
   );
 }

@@ -1,20 +1,25 @@
 import { useState, useMemo, useEffect, useRef } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { useWorkspace } from "../context/workspace";
 import { useUpload, type FileProgress } from "../hooks/useUpload";
 import FileDropzone from "./FileDropzone";
 import ProgressBar from "./ProgressBar";
 import PasswordInput from "./PasswordInput";
+import TransferCover from "./TransferCover";
 import {
+  ArrowLeft,
+  Plus,
+  Send,
   X,
   File as FileIcon,
   Loader2,
   Check,
   Copy,
-  Link,
-  Settings2,
+  Link2,
   Shuffle,
   Cat,
 } from "lucide-react";
+import "./workspace-transfers.css";
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
@@ -59,8 +64,12 @@ interface ResumeState {
   configs: UploadConfig[];
 }
 
+type UploadStep = "select" | "preparing" | "uploading" | "confirming" | "cancelling" | "done";
+
 export default function UploadPage() {
   const { client: { shares } } = useWorkspace();
+  const { state } = useLocation();
+  const dashboard = { pathname: "/dashboard", search: typeof state?.dashboardSearch === "string" ? state.dashboardSearch : "" };
   const [files, setFiles] = useState<LocalFile[]>([]);
   const [title, setTitle] = useState("");
   const [expiryDays, setExpiryDays] = useState(365);
@@ -69,7 +78,7 @@ export default function UploadPage() {
   const [idFormat, setIdFormat] = useState<"random" | "animals">("animals");
   const [idLength, setIdLength] = useState(10);
 
-  const [step, setStep] = useState<"select" | "uploading" | "done">("select");
+  const [step, setStep] = useState<UploadStep>("select");
   const [shareLink, setShareLink] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -80,6 +89,7 @@ export default function UploadPage() {
   );
   const [resume, setResume] = useState<ResumeState | null>(null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancellableUpload = useRef<{ cancelled: boolean } | null>(null);
 
   useEffect(() => {
     return () => {
@@ -87,7 +97,7 @@ export default function UploadPage() {
     };
   }, []);
 
-  const { uploadFiles, progress, isUploading } = useUpload();
+  const { uploadFiles, progress, cancel } = useUpload();
 
   const totalSize = useMemo(
     () => files.reduce((sum, f) => sum + f.file.size, 0),
@@ -111,9 +121,10 @@ export default function UploadPage() {
   };
 
   const handleCreate = async () => {
-    if (files.length === 0) return;
+    if (files.length === 0 || step !== "select") return;
+    const attempt = { cancelled: false };
     setError(null);
-    setStep("uploading");
+    setStep(resume ? "uploading" : "preparing");
 
     try {
       // Resume a previously initialized-but-unfinished share instead of
@@ -154,16 +165,31 @@ export default function UploadPage() {
         setResume({ shareId, configs });
       }
 
+      cancellableUpload.current = attempt;
+      setStep("uploading");
       await uploadFiles(shareId, configs, shares.completeMultipart);
+      cancellableUpload.current = null;
+      if (attempt.cancelled) throw new DOMException("Upload cancelled", "AbortError");
+
+      setStep("confirming");
       await shares.confirm(shareId);
 
       setShareLink(`${window.location.origin}/${shareId}`);
       setResume(null);
       setStep("done");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
+      cancellableUpload.current = null;
+      setError(attempt.cancelled ? "Upload cancelled. Your files are ready to retry."
+        : err instanceof Error ? err.message : "Upload failed");
       setStep("select");
     }
+  };
+
+  const handleCancel = () => {
+    if (!cancellableUpload.current) return;
+    cancellableUpload.current.cancelled = true;
+    setStep("cancelling");
+    cancel();
   };
 
   const handleCopy = async () => {
@@ -187,315 +213,274 @@ export default function UploadPage() {
     setIdLength(10);
     setStep("select");
     setShareLink("");
+    setCopied(false);
     setError(null);
     setResume(null);
     setFileIdByLocalId(new Map());
   };
 
-  /* ---------- Done State ---------- */
   if (step === "done") {
     return (
-      <div className="max-w-lg mx-auto animate-slide-up">
-        <div className="surface rounded-lg p-8 text-center">
-          <div className="w-14 h-14 rounded-lg bg-success/15 flex items-center justify-center mx-auto mb-4">
-            <Check className="w-7 h-7 text-success" />
-          </div>
-          <h2 className="text-2xl font-bold text-text-primary mb-2">
-            Share created!
-          </h2>
-          <p className="text-text-muted text-sm mb-6">
-            Anyone with this link can download your files.
-          </p>
+      <div className="workspace-transfer-flow mx-auto grid max-w-3xl gap-4">
+        <TransferCover title="Share created!">
+          <p className="text-sm text-white">Anyone with this link can download your files.</p>
+        </TransferCover>
 
-          <div className="flex items-center gap-2 bg-surface-light rounded-md p-3 mb-6">
-            <Link className="w-4 h-4 text-primary-light flex-shrink-0" />
-            <span className="text-sm text-text-primary truncate flex-1 text-left font-mono">
+        <section aria-label="Share link" className="surface grid gap-4 rounded-2xl p-4 sm:p-5">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-3 rounded-xl bg-surface-light p-3">
+            <Link2 className="size-4 shrink-0 text-primary" aria-hidden="true" />
+            <a href={shareLink} target="_blank" rel="noopener noreferrer" className="min-w-0 flex-1 font-mono text-sm text-text-primary underline decoration-border hover:decoration-current [overflow-wrap:anywhere]">
               {shareLink}
-            </span>
-            <button
-              onClick={handleCopy}
-              className="btn-primary !px-3 !py-1.5 text-xs flex items-center gap-1.5 flex-shrink-0"
-            >
-              {copied ? (
-                <Check className="w-3.5 h-3.5" />
-              ) : (
-                <Copy className="w-3.5 h-3.5" />
-              )}
+            </a>
+            <button onClick={handleCopy} className="btn-primary workspace-primary-action shrink-0 px-3 text-sm">
+              {copied ? <Check className="size-4" aria-hidden="true" /> : <Copy className="size-4" aria-hidden="true" />}
               {copied ? "Copied!" : "Copy"}
             </button>
           </div>
-
-          <button onClick={handleNew} className="btn-secondary text-sm">
-            Create another share
-          </button>
-        </div>
+          <span className="sr-only" role="status">{copied ? "Link copied" : ""}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <button onClick={handleNew} className="btn-secondary min-h-11 rounded-full text-sm">
+              Create another share
+            </button>
+            <Link to={dashboard} className="workspace-row-action">Back to dashboard</Link>
+          </div>
+        </section>
       </div>
     );
   }
 
-  /* ---------- Uploading State ---------- */
-  if (step === "uploading") {
-    return (
-      <div className="max-w-lg mx-auto animate-fade-in">
-        <div className="surface rounded-lg p-8">
-          <h2 className="text-xl font-bold text-text-primary mb-1">
-            Uploading files...
-          </h2>
-          <p className="text-text-muted text-sm mb-6">
-            Please keep this page open until the upload is complete.
-          </p>
+  if (step !== "select") {
+    const uploadMessage = {
+      preparing: "Preparing your upload…",
+      uploading: "Uploading to secure storage…",
+      confirming: "Finalizing your share…",
+      cancelling: "Cancelling upload…",
+    }[step];
 
-          <div className="space-y-4">
+    return (
+      <div className="workspace-transfer-flow mx-auto grid max-w-3xl gap-4">
+        <TransferCover title="Uploading files...">
+          <p className="text-sm text-white">Keep this page open until the upload is complete.</p>
+        </TransferCover>
+        <section aria-label="Upload progress" className="surface rounded-2xl p-4 sm:p-5">
+          <p role="status" className="mb-4 flex items-center gap-2 text-sm font-semibold text-primary">
+            <Loader2 className="size-4 shrink-0 motion-safe:animate-spin" aria-hidden="true" />
+            {uploadMessage}
+          </p>
+          <ul className="space-y-4" role="list">
             {files.map((f) => {
               const fileId = fileIdByLocalId.get(f.id);
-              const p: FileProgress =
-                (fileId ? progress.get(fileId) : undefined) || {
-                  loaded: 0,
-                  total: f.file.size,
-                  status: "pending",
-                };
-              const pct = p.total > 0 ? (p.loaded / p.total) * 100 : 0;
+              const current: FileProgress = (fileId ? progress.get(fileId) : undefined) || {
+                loaded: 0,
+                total: f.file.size,
+                status: "pending",
+              };
+              const percent = current.status === "done" ? 100
+                : Math.round(current.total > 0 ? (current.loaded / current.total) * 100 : 0);
+              const status = {
+                pending: "Waiting...",
+                uploading: `${percent}%`,
+                done: "Complete",
+                error: "Error",
+              }[current.status];
 
               return (
-                <div key={f.id}>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-sm text-text-primary truncate max-w-[70%]">
-                      {f.file.name}
-                    </span>
-                    <span className="text-xs text-text-muted">
-                      {p.status === "done"
-                        ? "Complete"
-                        : p.status === "uploading"
-                          ? `${Math.round(pct)}%`
-                          : p.status === "error"
-                            ? "Error"
-                            : "Waiting..."}
-                    </span>
+                <li key={f.id}>
+                  <div className="mb-1.5 flex items-baseline justify-between gap-3">
+                    <span className="min-w-0 text-sm text-text-primary [overflow-wrap:anywhere]">{f.file.name}</span>
+                    <span className="shrink-0 text-xs text-text-secondary">{status}</span>
                   </div>
-                  <ProgressBar
-                    value={pct}
-                    color={
-                      p.status === "done"
-                        ? "success"
-                        : p.status === "error"
-                          ? "danger"
-                          : "accent"
-                    }
-                  />
-                </div>
+                  <div
+                    role="progressbar"
+                    aria-label={f.file.name}
+                    aria-valuenow={percent}
+                    aria-valuetext={status}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                  >
+                    <ProgressBar
+                      value={percent}
+                      color={current.status === "done" ? "success" : current.status === "error" ? "danger" : "primary"}
+                    />
+                  </div>
+                </li>
               );
             })}
+          </ul>
+        </section>
+        {step === "uploading" && (
+          <div className="workspace-form-footer">
+            <button onClick={handleCancel} className="btn-secondary inline-flex min-h-11 items-center justify-center gap-2 rounded-full text-sm">
+              <X className="size-4 shrink-0" aria-hidden="true" />
+              Cancel upload
+            </button>
           </div>
-
-          {isUploading && (
-            <div className="flex items-center justify-center gap-2 mt-6 text-sm text-primary-light">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Uploading to secure storage...
-            </div>
-          )}
-        </div>
+        )}
       </div>
     );
   }
 
-  /* ---------- Select State ---------- */
   return (
-    <div className="max-w-3xl mx-auto animate-fade-in">
-      <div className="mb-6">
-        <h1 className="text-2xl sm:text-3xl font-bold text-text-primary tracking-tight">
-          Upload Files
-        </h1>
-        <p className="text-text-muted text-sm mt-1">
-          Share files securely with a link
-        </p>
-      </div>
+    <div className="workspace-transfer-flow mx-auto grid max-w-5xl gap-4 sm:gap-5">
+      <Link to={dashboard} className="workspace-row-action justify-self-start" aria-label="Back to dashboard">
+        <ArrowLeft className="size-4" aria-hidden="true" />
+        Dashboard
+      </Link>
+      <TransferCover title="Upload Files">
+        <p className="text-sm text-white">Share files securely with a link.</p>
+      </TransferCover>
 
       {error && (
-        <div role="alert" className="mb-4 bg-danger/10 border border-danger/20 rounded-md px-4 py-3 text-sm text-danger animate-fade-in">
+        <div role="alert" className="workspace-transfer-notice border-danger/25 bg-danger/10 text-danger">
           {error}
         </div>
       )}
 
-      {/* Dropzone */}
-      <FileDropzone onFiles={handleAddFiles} />
-
-      {/* File List */}
-      {files.length > 0 && (
-        <div className="mt-6 surface rounded-lg divide-y divide-border overflow-hidden">
-          {files.map((f) => (
-            <div
-              key={f.id}
-              className="flex items-center gap-3 px-4 py-3 group"
-            >
-              <div className="w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0">
-                <FileIcon className="w-4 h-4 text-primary-light" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-text-primary truncate">
-                  {f.file.name}
-                </p>
-                <p className="text-xs text-text-muted">
-                  {formatBytes(f.file.size)}
-                </p>
-              </div>
-              <button
-                onClick={() => handleRemove(f.id)}
-                className="p-1.5 rounded-md hover:bg-danger/10 text-text-muted hover:text-danger transition-all sm:opacity-0 sm:group-hover:opacity-100"
-              >
-                <X className="w-4 h-4" />
+      <div className={files.length > 0 ? "grid items-start gap-4 md:grid-cols-2" : ""}>
+        <div className="grid min-w-0 gap-3">
+          <div className="workspace-file-picker">
+            <FileDropzone onFiles={handleAddFiles}>
+              <button type="button" aria-label="Add files" className="flex w-full items-center gap-3 rounded-[inherit] bg-primary/8 p-4 text-left hover:bg-primary/12 focus-visible:-outline-offset-4">
+                <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary text-background">
+                  <Plus className="size-5" aria-hidden="true" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block font-semibold text-text-primary">Add files</span>
+                  <span className="block text-sm text-text-secondary">
+                    {files.length > 0
+                      ? `${files.length} ${files.length === 1 ? "file" : "files"} · ${formatBytes(totalSize)}`
+                      : "Choose or drag files from your device."}
+                  </span>
+                </span>
               </button>
-            </div>
-          ))}
-          <div className="px-4 py-3 bg-surface-light/50">
-            <span className="text-sm text-text-secondary">
-              {files.length} file{files.length !== 1 ? "s" : ""} &middot;{" "}
-              {formatBytes(totalSize)}
-            </span>
+            </FileDropzone>
           </div>
+          {files.length > 0 && (
+            <ul role="list" aria-label="Selected files" className="surface divide-y divide-border rounded-2xl">
+              {files.map((f) => (
+                <li key={f.id} className="flex items-center gap-3 px-3 py-1.5">
+                  <span className="workspace-transfer-tile">
+                    <FileIcon className="size-4" aria-hidden="true" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-text-primary [overflow-wrap:anywhere]">{f.file.name}</p>
+                    <p className="text-xs text-text-secondary">{formatBytes(f.file.size)}</p>
+                  </div>
+                  <button
+                    onClick={() => handleRemove(f.id)}
+                    aria-label={`Remove ${f.file.name}`}
+                    title="Remove file"
+                    className="workspace-row-action workspace-row-delete"
+                  >
+                    <X className="size-4" aria-hidden="true" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
-      )}
 
-      {/* Settings */}
-      {files.length > 0 && (
-        <div className="mt-6 surface rounded-lg p-5 sm:p-6 animate-fade-in">
-          <div className="flex items-center gap-2 mb-5">
-            <Settings2 className="w-4 h-4 text-primary-light" />
-            <h3 className="font-semibold text-text-primary">Settings</h3>
-          </div>
+        {files.length > 0 && (
+          <div className="grid min-w-0 gap-4">
+            <section aria-labelledby="share-settings" className="surface grid gap-4 rounded-2xl p-4 sm:p-5">
+              <h2 id="share-settings" className="text-lg font-semibold text-text-primary">Share settings</h2>
+              <div>
+                <label htmlFor="share-title" className="mb-1.5 block text-sm font-medium text-text-primary">
+                  Title <span className="font-normal text-text-muted">(optional)</span>
+                </label>
+                <input
+                  id="share-title"
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="input-field"
+                  placeholder="My awesome files"
+                />
+              </div>
+              <div>
+                <label htmlFor="share-expiry" className="mb-1.5 block text-sm font-medium text-text-primary">Expires after</label>
+                <select
+                  id="share-expiry"
+                  value={expiryDays}
+                  onChange={(e) => setExpiryDays(Number(e.target.value))}
+                  className="input-field"
+                >
+                  {EXPIRY_OPTIONS.map((option) => (
+                    <option key={option.days} value={option.days}>{option.label}</option>
+                  ))}
+                </select>
+              </div>
+              <fieldset className="min-w-0 space-y-2">
+                <legend className="mb-1.5 text-sm font-medium text-text-primary">Link format</legend>
+                <div className="workspace-transfer-segmented">
+                  <button type="button" aria-pressed={idFormat === "random"} onClick={() => setIdFormat("random")} className="text-primary">
+                    <Shuffle className="size-4" aria-hidden="true" />
+                    Random characters
+                  </button>
+                  <button type="button" aria-pressed={idFormat === "animals"} onClick={() => setIdFormat("animals")} className="text-primary">
+                    <Cat className="size-4" aria-hidden="true" />
+                    Animal combo
+                  </button>
+                </div>
+                {idFormat === "random" ? (
+                  <div className="grid gap-1">
+                    <label htmlFor="share-link-length" className="flex flex-wrap justify-between gap-x-2 text-xs text-text-secondary">
+                      <span>Link length</span>
+                      <span className="font-semibold text-primary">{idLength} characters</span>
+                    </label>
+                    <input
+                      id="share-link-length"
+                      type="range"
+                      min="9"
+                      max="64"
+                      value={idLength}
+                      aria-valuetext={`${idLength} characters`}
+                      onChange={(e) => setIdLength(Number(e.target.value))}
+                      className="h-8 w-full accent-primary"
+                    />
+                  </div>
+                ) : (
+                  <p className="text-xs text-text-secondary">Example: <span className="font-mono">/monkey-eel-cat</span></p>
+                )}
+              </fieldset>
+            </section>
 
-          <div className="grid gap-5 sm:grid-cols-2">
-            {/* Title */}
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-text-secondary mb-1.5">
-                Title{" "}
-                <span className="text-text-muted font-normal">(optional)</span>
-              </label>
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="input-field"
-                placeholder="My awesome files"
-              />
-            </div>
-
-            {/* Expiry */}
-            <div>
-              <label className="block text-sm font-medium text-text-secondary mb-1.5">
-                Expires after
-              </label>
-              <select
-                value={expiryDays}
-                onChange={(e) => setExpiryDays(Number(e.target.value))}
-                className="input-field"
-              >
-                {EXPIRY_OPTIONS.map((o) => (
-                  <option key={o.days} value={o.days}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Max Downloads */}
-            <div>
-              <label className="block text-sm font-medium text-text-secondary mb-1.5">
-                Max downloads{" "}
-                <span className="text-text-muted font-normal">(optional)</span>
-              </label>
-              <input
-                type="number"
-                min="1"
-                value={maxDownloads}
-                onChange={(e) => setMaxDownloads(e.target.value)}
-                className="input-field"
-                placeholder="Unlimited"
-              />
-            </div>
-
-            {/* Password */}
-            <div className="sm:col-span-2">
-              <label htmlFor="share-password" className="block text-sm font-medium text-text-secondary mb-1.5">
-                Password{" "}
-                <span className="text-text-muted font-normal">(optional)</span>
-              </label>
+            <section aria-labelledby="share-limits" className="surface grid gap-4 rounded-2xl p-4 sm:p-5">
+              <h2 id="share-limits" className="text-lg font-semibold text-text-primary">Password and download limit</h2>
+              <div>
+                <label htmlFor="share-password" className="mb-1.5 block text-sm font-medium text-text-primary">
+                  Password <span className="font-normal text-text-muted">(optional)</span>
+                </label>
                 <PasswordInput
                   id="share-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="input-field"
                   placeholder="Protect your share with a password"
                 />
-            </div>
-
-            {/* Link Format */}
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-text-secondary mb-2">
-                Link format
-              </label>
-              <div className="flex gap-2 mb-3">
-                <button
-                  type="button"
-                  onClick={() => setIdFormat("random")}
-                  className={`flex items-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium transition-all flex-1 ${
-                    idFormat === "random"
-                      ? "bg-primary/10 text-primary-light border border-primary/30"
-                      : "bg-surface-light text-text-secondary border border-border hover:border-border-light"
-                  }`}
-                >
-                  <Shuffle className="w-4 h-4" />
-                  Random characters
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIdFormat("animals")}
-                  className={`flex items-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium transition-all flex-1 ${
-                    idFormat === "animals"
-                      ? "bg-primary/10 text-primary-light border border-primary/30"
-                      : "bg-surface-light text-text-secondary border border-border hover:border-border-light"
-                  }`}
-                >
-                  <Cat className="w-4 h-4" />
-                  Animal combo
-                </button>
               </div>
-
-              {idFormat === "random" && (
-                <div className="animate-fade-in">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs text-text-muted">
-                      {idLength} characters
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min="9"
-                    max="64"
-                    value={idLength}
-                    onChange={(e) => setIdLength(Number(e.target.value))}
-                    className="w-full accent-primary"
-                  />
-                </div>
-              )}
-
-              {idFormat === "animals" && (
-                <p className="text-xs text-text-muted animate-fade-in">
-                  Example: /monkey-eel-cat
-                </p>
-              )}
-            </div>
+              <div>
+                <label htmlFor="share-download-limit" className="mb-1.5 block text-sm font-medium text-text-primary">
+                  Max downloads <span className="font-normal text-text-muted">(optional)</span>
+                </label>
+                <input
+                  id="share-download-limit"
+                  type="number"
+                  min="1"
+                  value={maxDownloads}
+                  onChange={(e) => setMaxDownloads(e.target.value)}
+                  className="input-field"
+                  placeholder="Unlimited"
+                />
+              </div>
+            </section>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Create Button */}
       {files.length > 0 && (
-        <div className="mt-6 flex justify-end animate-fade-in">
-          <button
-            onClick={handleCreate}
-            disabled={isUploading || files.length === 0}
-            className="btn-primary flex items-center gap-2 text-base px-8 py-3"
-          >
+        <div className="workspace-form-footer">
+          <button onClick={handleCreate} className="btn-primary workspace-primary-action text-sm">
+            <Send className="size-4 shrink-0" aria-hidden="true" />
             {resume ? "Retry upload" : "Create Share"}
           </button>
         </div>

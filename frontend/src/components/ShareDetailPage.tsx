@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useState, useEffect, useRef } from "react";
+import { useParams, useNavigate, useLocation, Link } from "react-router-dom";
 import {
   parseUtcDate,
   type ShareDetail,
@@ -7,6 +7,8 @@ import {
 } from "../lib/api";
 import { downloadFiles } from "../lib/download";
 import ConfirmTransferDeletion from "./ConfirmTransferDeletion";
+import TransferCover from "./TransferCover";
+import { getShareStatus, statusLabels } from "../lib/transferStatus";
 import { useWorkspace } from "../context/workspace";
 import {
   ArrowLeft,
@@ -24,6 +26,7 @@ import {
   Clock,
   Trash2,
 } from "lucide-react";
+import "./workspace-transfers.css";
 
 function formatBytes(bytes: number | null): string {
   if (!bytes) return "0 B";
@@ -54,42 +57,60 @@ export default function ShareDetailPage() {
   const { client: { shares: sharesApi }, readOnly } = useWorkspace();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { state } = useLocation();
+  const dashboard = { pathname: "/dashboard", search: typeof state?.dashboardSearch === "string" ? state.dashboardSearch : "" };
   const [share, setShare] = useState<ShareDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadVersion, setLoadVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [extending, setExtending] = useState(false);
   const [showExtend, setShowExtend] = useState(false);
-  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [downloadingIds, setDownloadingIds] = useState<Set<string>>(new Set());
   const [togglingPause, setTogglingPause] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
-
-  const load = useCallback(async () => {
-    if (!id) return;
-    setLoading(true);
-    setError(null);
-    try {
-      setShare(await sharesApi.get(id));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load share.");
-    } finally {
-      setLoading(false);
-    }
-  }, [id, sharesApi]);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (!id) return;
+    let cancelled = false;
+    setLoading(true);
+    setShare(null);
+    setError(null);
+    async function load(shareId: string) {
+      try {
+        const result = await sharesApi.get(shareId);
+        if (!cancelled) setShare(result);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load share.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    void load(id);
+    return () => { cancelled = true; };
+  }, [id, sharesApi, loadVersion]);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+    };
+  }, []);
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(`${window.location.origin}/${id}`);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/${id}`);
+      setCopied(true);
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+      copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setError("Could not copy the share link.");
+    }
   };
 
   const handleExtend = async (days: number) => {
-    if (!id) return;
+    if (!id || readOnly || extending) return;
     setExtending(true);
     setError(null);
     try {
@@ -104,7 +125,7 @@ export default function ShareDetailPage() {
   };
 
   const handleTogglePause = async () => {
-    if (!id || !share) return;
+    if (!id || !share || readOnly || togglingPause) return;
     setTogglingPause(true);
     setError(null);
     try {
@@ -123,7 +144,7 @@ export default function ShareDetailPage() {
     setError(null);
     try {
       await sharesApi.purge(id);
-      navigate("/dashboard");
+      navigate(dashboard);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to permanently delete share.");
       setDeleting(false);
@@ -132,194 +153,219 @@ export default function ShareDetailPage() {
   };
 
   const handleDownloadFile = async (fileId: string, filename: string) => {
-    if (!id) return;
-    setDownloadingId(fileId);
+    if (!id || downloadingIds.has(fileId)) return;
+    setDownloadingIds((previous) => new Set(previous).add(fileId));
     try {
       const res = await sharesApi.downloadFile(id, fileId);
       await downloadFiles(res.files, filename);
     } catch {
       setError("Download failed.");
     } finally {
-      setDownloadingId(null);
+      setDownloadingIds((previous) => {
+        const next = new Set(previous);
+        next.delete(fileId);
+        return next;
+      });
     }
   };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+      <div role="status" className="flex items-center justify-center gap-2 py-12 text-sm text-text-secondary">
+        <Loader2 className="size-5 text-primary motion-safe:animate-spin" aria-hidden="true" />
+        Loading share details…
       </div>
     );
   }
 
   if (!share) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-center">
-        <AlertCircle className="w-10 h-10 text-danger mb-3" />
-        <p className="text-text-secondary mb-4">{error || "Share not found."}</p>
-        <Link to="/dashboard" className="btn-secondary text-sm">
-          Back to dashboard
-        </Link>
+      <div className="surface mx-auto grid max-w-lg justify-items-start gap-3 rounded-2xl p-5">
+        <p role="alert" className="flex items-center gap-2 text-sm text-danger">
+          <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
+          {error || "Share not found."}
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={() => setLoadVersion((version) => version + 1)} className="btn-secondary text-sm">Retry</button>
+          <Link to={dashboard} className="workspace-row-action">Back to dashboard</Link>
+        </div>
       </div>
     );
   }
 
   const isLive = share.is_active;
+  const status = getShareStatus(share);
 
   return (
-    <div className="animate-fade-in max-w-4xl mx-auto">
-      {/* Header */}
-      <button
-        onClick={() => navigate("/dashboard")}
-        className="flex items-center gap-1.5 text-sm text-text-muted hover:text-text-primary mb-4"
-      >
-        <ArrowLeft className="w-4 h-4" />
+    <div className="workspace-transfer-flow mx-auto grid max-w-5xl gap-4 sm:gap-5">
+      <button onClick={() => navigate(dashboard)} className="workspace-row-action justify-self-start">
+        <ArrowLeft className="size-4" aria-hidden="true" />
         Dashboard
       </button>
 
-      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
-        <div className="min-w-0">
-          <h1 className="text-2xl sm:text-3xl font-bold text-text-primary tracking-tight truncate">
-            {share.title || "Untitled share"}
-          </h1>
-          <p className="text-sm text-text-muted mt-1 font-mono break-all">{share.id}</p>
+      <TransferCover title={share.title || "Untitled share"} />
+
+      <div className="surface flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-2xl p-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 px-1">
+          <span className="workspace-transfer-status" data-status={status}>{statusLabels[status]}</span>
+          <span className="min-w-0 font-mono text-sm text-text-secondary [overflow-wrap:anywhere]">{share.id}</span>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {isLive && (
-            <>
-            <button
-              onClick={handleCopy}
-              aria-label="Copy link"
-              className="btn-secondary !px-3 sm:!px-4 text-sm flex items-center gap-2"
-            >
-              {copied ? <Check className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
-              <span className="hidden sm:inline">{copied ? "Copied!" : "Copy Link"}</span>
-            </button>
-            <button
-              onClick={handleTogglePause}
-              disabled={readOnly || togglingPause}
-              className="btn-secondary text-sm flex items-center gap-2"
-            >
-              {togglingPause ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : share.is_paused ? (
-                <Eye className="w-4 h-4" />
-              ) : (
-                <EyeOff className="w-4 h-4" />
-              )}
-              {share.is_paused ? "Unhide" : "Hide"}
-            </button>
-            <button
-              onClick={() => setShowExtend(!showExtend)}
-              disabled={readOnly}
-              className="btn-primary text-sm flex items-center gap-2"
-            >
-              <CalendarPlus className="w-4 h-4" />
-              Extend
-            </button>
-            </>
-          )}
-          <button
-            onClick={() => setConfirmDelete(true)}
-            disabled={readOnly}
-            aria-label="Permanently delete share"
-            title="Delete permanently"
-            className="btn-danger !px-3 text-sm flex items-center"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-        </div>
+
+        {(isLive || !readOnly) && (
+          <div role="group" aria-label="Share actions" className="flex flex-wrap gap-2">
+            {isLive && (
+              <button
+                onClick={handleCopy}
+                aria-label="Copy link"
+                className="btn-secondary inline-flex items-center gap-2 rounded-xl px-3 text-sm"
+              >
+                {copied ? <Check className="size-4 text-success" aria-hidden="true" /> : <Copy className="size-4" aria-hidden="true" />}
+                {copied ? "Copied!" : "Copy Link"}
+              </button>
+            )}
+            {isLive && !readOnly && (
+              <>
+                <button
+                  onClick={handleTogglePause}
+                  disabled={togglingPause}
+                  className="btn-secondary inline-flex items-center gap-2 rounded-xl px-3 text-sm"
+                >
+                  {togglingPause ? <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden="true" />
+                    : share.is_paused ? <Eye className="size-4" aria-hidden="true" /> : <EyeOff className="size-4" aria-hidden="true" />}
+                  {share.is_paused ? "Unhide" : "Hide"}
+                </button>
+                <button
+                  onClick={() => setShowExtend((previous) => !previous)}
+                  aria-expanded={showExtend}
+                  aria-controls={showExtend ? "share-expiry-options" : undefined}
+                  className="btn-secondary inline-flex items-center gap-2 rounded-xl px-3 text-sm"
+                >
+                  <CalendarPlus className="size-4" aria-hidden="true" />
+                  Extend
+                </button>
+              </>
+            )}
+            {!readOnly && (
+              <button
+                onClick={() => setConfirmDelete(true)}
+                aria-label="Permanently delete share"
+                title="Delete permanently"
+                className="workspace-row-action workspace-row-delete"
+              >
+                <Trash2 className="size-4" aria-hidden="true" />
+              </button>
+            )}
+            <span className="sr-only" role="status">{copied ? "Link copied" : ""}</span>
+          </div>
+        )}
       </div>
 
-      {/* Hidden notice */}
       {isLive && share.is_paused && (
-        <div className="mb-6 flex items-center gap-2 bg-warning/10 border border-warning/20 rounded-md px-4 py-3 text-sm text-warning animate-fade-in">
-          <EyeOff className="w-4 h-4 flex-shrink-0" />
-          This share is hidden. Recipients get "not found" until you unhide it; files are kept.
+        <div role="status" className="workspace-transfer-notice border-warning/25 bg-warning-container text-on-warning-container">
+          <EyeOff className="size-4 shrink-0" aria-hidden="true" />
+          <p className="min-w-0 flex-1">This share is hidden. Recipients see a “not found” message until you unhide it.</p>
         </div>
       )}
 
-      {/* Extend picker */}
-      {showExtend && (
-        <div className="mb-6 surface rounded-lg p-4 animate-fade-in">
-          <p className="text-sm text-text-secondary mb-3">
-            Set a new expiry, counted from now:
-          </p>
+      {isLive && !readOnly && showExtend && (
+        <div id="share-expiry-options" role="group" aria-label="New expiry" className="surface rounded-2xl p-4">
+          <p className="mb-3 text-sm text-text-secondary">Set a new expiry counted from now.</p>
           <div className="flex flex-wrap gap-2">
-            {EXTEND_OPTIONS.map((opt) => (
+            {EXTEND_OPTIONS.map((option) => (
               <button
-                key={opt.days}
+                key={option.days}
                 disabled={extending}
-                onClick={() => handleExtend(opt.days)}
-                className="btn-secondary text-sm flex items-center gap-1.5"
+                onClick={() => handleExtend(option.days)}
+                className="btn-secondary inline-flex items-center gap-1.5 rounded-full text-sm"
               >
-                {extending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-                {opt.label}
+                {extending && <Loader2 className="size-3.5 motion-safe:animate-spin" aria-hidden="true" />}
+                {option.label}
               </button>
             ))}
           </div>
         </div>
       )}
 
-      {/* Error */}
       {error && (
-        <div className="mb-4 flex items-center gap-2 bg-danger/10 border border-danger/20 rounded-md px-4 py-3 text-sm text-danger">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          {error}
+        <div role="alert" className="workspace-transfer-notice border-danger/25 bg-danger/10 text-danger">
+          <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
+          <p className="min-w-0 flex-1">{error}</p>
         </div>
       )}
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        <StatTile icon={<FileText className="w-4 h-4" />} label="Files" value={String(share.file_count)} />
-        <StatTile icon={<HardDrive className="w-4 h-4" />} label="Size" value={formatBytes(share.total_size)} />
+      <dl className="surface grid grid-cols-2 gap-x-4 gap-y-5 rounded-2xl px-4 py-4 sm:grid-cols-4 sm:px-5">
+        <StatTile icon={<FileText className="size-4" aria-hidden="true" />} label="Files" value={String(share.file_count)} />
+        <StatTile icon={<HardDrive className="size-4" aria-hidden="true" />} label="Size" value={formatBytes(share.total_size)} />
         <StatTile
-          icon={<Download className="w-4 h-4" />}
+          icon={<Download className="size-4" aria-hidden="true" />}
           label="Downloads"
           value={`${share.download_count}${share.max_downloads != null ? ` / ${share.max_downloads}` : ""}`}
         />
         <StatTile
-          icon={<Clock className="w-4 h-4" />}
+          icon={<Clock className="size-4" aria-hidden="true" />}
           label="Expires"
           value={share.expires_at ? formatDateTime(share.expires_at) : "Never"}
         />
-      </div>
+      </dl>
 
-      {/* Files */}
-      <div className="surface rounded-lg p-5 mb-6">
-        <h2 className="font-semibold text-text-primary mb-4">Files</h2>
-        {share.files.length === 0 ? (
-          <p className="text-sm text-text-muted">No files.</p>
-        ) : (
-          <div className="divide-y divide-border">
-            {share.files.map((f) => (
-              <div key={f.id} className="flex items-center gap-3 py-3">
-                <FileText className="w-4 h-4 text-text-muted flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-text-primary truncate">{f.original_filename}</p>
-                  <p className="text-xs text-text-muted">{formatBytes(f.file_size)}</p>
-                </div>
-                {isLive && (
-                  <button
-                    onClick={() => handleDownloadFile(f.id, f.original_filename)}
-                    disabled={downloadingId === f.id}
-                    className="btn-secondary !px-3 !py-1.5 text-xs flex items-center gap-1.5 flex-shrink-0"
-                  >
-                    {downloadingId === f.id ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Download className="w-3.5 h-3.5" />
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+        <section aria-labelledby="share-files" className="surface min-w-0 rounded-2xl">
+          <h2 id="share-files" className="px-4 py-3 text-lg font-semibold text-text-primary">Files</h2>
+          {share.files.length === 0 ? (
+            <p className="px-4 pb-4 text-sm text-text-secondary">No files.</p>
+          ) : (
+            <ul className="divide-y divide-border border-t border-border" role="list">
+              {share.files.map((file) => {
+                const downloading = downloadingIds.has(file.id);
+                const filenameId = `share-file-${file.id}`;
+                return (
+                  <li key={file.id} className="flex items-center gap-2 px-3 py-2 sm:gap-3 sm:px-4">
+                    <span className="workspace-transfer-tile">
+                      <FileText className="size-4" aria-hidden="true" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p id={filenameId} className="text-sm font-medium text-text-primary [overflow-wrap:anywhere]">{file.original_filename}</p>
+                      <p className="text-xs text-text-secondary">{formatBytes(file.file_size)}</p>
+                    </div>
+                    {isLive && (
+                      <button
+                        onClick={() => handleDownloadFile(file.id, file.original_filename)}
+                        disabled={downloading}
+                        aria-label="Download"
+                        aria-describedby={filenameId}
+                        aria-busy={downloading}
+                        title="Download"
+                        className="workspace-row-action"
+                      >
+                        {downloading ? <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden="true" />
+                          : <Download className="size-4" aria-hidden="true" />}
+                        <span className="hidden sm:inline" aria-hidden="true">Download</span>
+                      </button>
                     )}
-                    Download
-                  </button>
-                )}
-              </div>
-            ))}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+
+        <section aria-labelledby="download-log" className="surface min-w-0 rounded-2xl">
+          <div className="px-4 py-3">
+            <h2 id="download-log" className="text-lg font-semibold text-text-primary">Download log</h2>
+            {share.downloads.length > 0 && (
+              <p className="mt-1 text-xs text-text-secondary">Most recent download events. Files in a bundle are logged separately.</p>
+            )}
           </div>
-        )}
+          {share.downloads.length === 0 ? (
+            <p className="px-4 pb-4 text-sm text-text-secondary">No downloads yet.</p>
+          ) : (
+            <ul className="divide-y divide-border border-t border-border" role="list">
+              {share.downloads.map((entry, index) => <DownloadLogRow key={index} entry={entry} />)}
+            </ul>
+          )}
+        </section>
       </div>
 
-      {/* Delete confirmation */}
       {confirmDelete && (
         <ConfirmTransferDeletion
           title="Permanently delete share?"
@@ -329,55 +375,38 @@ export default function ShareDetailPage() {
           onConfirm={handleDelete}
         />
       )}
-
-      {/* Download log */}
-      <div className="surface rounded-lg p-5">
-        <h2 className="font-semibold text-text-primary mb-1">Download log</h2>
-        <p className="text-xs text-text-muted mb-4">
-          Most recent download events (each file in a bundle logs separately).
-        </p>
-        {share.downloads.length === 0 ? (
-          <p className="text-sm text-text-muted">No downloads yet.</p>
-        ) : (
-          <div className="divide-y divide-border">
-            {share.downloads.map((d, i) => (
-              <DownloadLogRow key={i} entry={d} />
-            ))}
-          </div>
-        )}
-      </div>
     </div>
   );
 }
 
 function StatTile({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="surface rounded-lg p-4">
-      <div className="flex items-center gap-2 text-text-muted text-xs mb-1.5">
+    <div className="min-w-0">
+      <dt className="flex items-center gap-2 text-xs text-text-secondary">
         {icon}
         {label}
-      </div>
-      <p className="text-sm font-semibold text-text-primary truncate">{value}</p>
+      </dt>
+      <dd className="mt-1 text-sm font-semibold text-text-primary [overflow-wrap:anywhere]">{value}</dd>
     </div>
   );
 }
 
 function DownloadLogRow({ entry }: { entry: DownloadLogEntry }) {
   return (
-    <div className="py-3 text-sm">
+    <li className="px-4 py-3 text-sm">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span className="text-text-primary">{formatDateTime(entry.downloaded_at)}</span>
+        <time dateTime={entry.downloaded_at} className="font-medium text-text-primary">{formatDateTime(entry.downloaded_at)}</time>
         {entry.ip_address && (
-          <span className="flex items-center gap-1 text-text-secondary text-xs">
-            <Globe className="w-3 h-3" />
-            {entry.ip_address}
+          <span className="flex min-w-0 items-center gap-1 text-xs text-text-secondary">
+            <Globe className="size-3 shrink-0" aria-hidden="true" />
+            <span className="[overflow-wrap:anywhere]">{entry.ip_address}</span>
           </span>
         )}
       </div>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-0.5 text-xs text-text-muted">
+      <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-secondary">
         {entry.original_filename && <span className="truncate">{entry.original_filename}</span>}
-        {entry.user_agent && <span className="truncate max-w-full">{entry.user_agent.slice(0, 80)}</span>}
+        {entry.user_agent && <span className="max-w-full truncate">{entry.user_agent.slice(0, 80)}</span>}
       </div>
-    </div>
+    </li>
   );
 }

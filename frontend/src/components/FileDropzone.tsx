@@ -64,21 +64,29 @@ export default function FileDropzone({
     handleFiles(e.dataTransfer.files);
   };
 
+  const openPicker = () => {
+    if (!disabled) inputRef.current?.click();
+  };
+
   return (
     <div
       onDragEnter={onDragEnter}
       onDragOver={(e) => e.preventDefault()}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
-      onClick={() => !disabled && inputRef.current?.click()}
+      onClick={children ? (e) => {
+        if (e.target !== inputRef.current) openPicker();
+      } : undefined}
+      data-dragging={isDragging || undefined}
       className={`
-        relative cursor-pointer rounded-lg border-2 border-dashed p-8 transition-all duration-200 text-center
+        file-dropzone relative rounded-2xl border border-dashed bg-surface-light text-center transition-colors
         ${
           isDragging
-            ? "border-primary bg-primary/5"
-            : "border-border-light hover:border-primary/40 hover:bg-surface/50"
+            ? "border-primary"
+            : "border-border-light hover:border-primary"
         }
-        ${disabled ? "opacity-50 cursor-not-allowed" : ""}
+        ${children ? "p-8" : ""}
+        ${disabled ? "opacity-50" : ""}
       `}
     >
       <input
@@ -91,28 +99,28 @@ export default function FileDropzone({
       />
 
       {children || (
-        <div className="flex flex-col items-center gap-4 py-6">
-          <div
-            className={`
-              w-14 h-14 rounded-lg flex items-center justify-center transition-all duration-200
-              ${isDragging ? "bg-primary/15 scale-105" : "bg-surface-light"}
-            `}
-          >
+        <button
+          type="button"
+          onClick={openPicker}
+          disabled={disabled}
+          className="flex w-full cursor-pointer flex-col items-center gap-2.5 rounded-2xl px-4 py-5 disabled:cursor-not-allowed sm:py-6"
+        >
+          <span className={`file-dropzone-icon grid size-11 place-items-center rounded-xl text-primary transition-colors ${isDragging ? "bg-primary/20" : "bg-primary/10"}`}>
             {isDragging ? (
-              <CloudUpload className="w-7 h-7 text-primary-light" />
+              <CloudUpload className="size-5" aria-hidden="true" />
             ) : (
-              <Upload className="w-7 h-7 text-text-muted" />
+              <Upload className="size-5" aria-hidden="true" />
             )}
-          </div>
-          <div>
-            <p className="text-base font-semibold text-text-primary">
+          </span>
+          <span>
+            <span className="block text-base font-semibold text-text-primary">
               {isDragging ? dropLabel : dragLabel}
-            </p>
-            <p className="text-sm text-text-muted mt-1">
+            </span>
+            <span className="mt-0.5 block text-sm text-text-secondary">
               {browseLabel}
-            </p>
-          </div>
-        </div>
+            </span>
+          </span>
+        </button>
       )}
     </div>
   );

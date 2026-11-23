@@ -864,6 +864,29 @@ try {
     });
   }
 
+  await scenario("recipient covers retain their artwork on phones and follow the device theme", async ({ page, state }) => {
+    state.identity = null;
+    for (const variant of ["share", "request"]) {
+      state.publicRequest = variant === "request";
+      await page.goto(`${base}/visible-test`);
+      const cover = page.locator(`.transfer-cover--${variant}`);
+      const title = cover.getByRole("heading", { name: `Protected test ${variant}` });
+      await title.waitFor();
+      for (const [width, colorScheme, background] of [
+        [390, "light", "rgb(246, 246, 242)"],
+        [1280, "dark", "rgb(17, 23, 34)"],
+      ]) {
+        await page.setViewportSize({ width, height: 844 });
+        await page.emulateMedia({ colorScheme });
+        await page.waitForFunction(expected => getComputedStyle(document.body).backgroundColor === expected, background);
+        const artwork = await cover.locator("svg").boundingBox();
+        const heading = await title.boundingBox();
+        assert.ok(artwork && heading && artwork.width > 0);
+        assert.ok(heading.x + heading.width <= artwork.x + 1, `${variant} artwork should sit beside the heading at ${width}px`);
+      }
+    }
+  });
+
   await scenario("Dutch public password action is localized and remains private across reload", async ({ page, context, state, calls }) => {
     state.identity = null;
     await context.addInitScript(() => localStorage.setItem("lang", "nl"));
