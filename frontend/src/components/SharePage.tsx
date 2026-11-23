@@ -200,13 +200,13 @@ export default function SharePage({
         <div className="surface rounded-lg p-6 sm:p-8">
           {/* Expired / Exhausted */}
           {isExpired && (
-            <div className="flex items-center gap-2 bg-danger/10 border border-danger/20 rounded-md px-4 py-3 text-sm text-red-400 mb-5">
+            <div className="flex items-center gap-2 bg-danger/10 border border-danger/20 rounded-md px-4 py-3 text-sm text-danger mb-5">
               <Clock className="w-4 h-4 flex-shrink-0" />
               {t("share.expired")}
             </div>
           )}
           {!isExpired && isExhausted && (
-            <div className="flex items-center gap-2 bg-warning/10 border border-warning/20 rounded-md px-4 py-3 text-sm text-amber-400 mb-5">
+            <div className="flex items-center gap-2 bg-warning/10 border border-warning/20 rounded-md px-4 py-3 text-sm text-warning mb-5">
               <ShieldAlert className="w-4 h-4 flex-shrink-0" />
               {t("share.downloadLimit")}
             </div>
@@ -250,7 +250,7 @@ export default function SharePage({
               {!isExpired && !isExhausted && (
                 <>
                   {unlockError && (
-                    <div className="mb-4 bg-danger/10 border border-danger/20 rounded-md px-4 py-3 text-sm text-red-400 animate-fade-in">
+                    <div className="mb-4 bg-danger/10 border border-danger/20 rounded-md px-4 py-3 text-sm text-danger animate-fade-in">
                       {unlockError}
                     </div>
                   )}
@@ -317,14 +317,14 @@ export default function SharePage({
 
           {/* Download Error */}
           {downloadError && (
-            <div className="mb-4 bg-danger/10 border border-danger/20 rounded-md px-4 py-3 text-sm text-red-400 animate-fade-in">
+            <div className="mb-4 bg-danger/10 border border-danger/20 rounded-md px-4 py-3 text-sm text-danger animate-fade-in">
               {downloadError}
             </div>
           )}
 
           {/* Download Success */}
           {downloadStarted && (
-            <div className="mb-4 flex items-center gap-2 bg-success/10 border border-success/20 rounded-md px-4 py-3 text-sm text-emerald-400 animate-fade-in">
+            <div className="mb-4 flex items-center gap-2 bg-success/10 border border-success/20 rounded-md px-4 py-3 text-sm text-success animate-fade-in">
               <Check className="w-4 h-4 flex-shrink-0" />
               {t("share.downloadStarted")}
             </div>

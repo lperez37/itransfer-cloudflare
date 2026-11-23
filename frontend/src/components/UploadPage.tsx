@@ -311,7 +311,7 @@ export default function UploadPage() {
       </div>
 
       {error && (
-        <div role="alert" className="mb-4 bg-danger/10 border border-danger/20 rounded-md px-4 py-3 text-sm text-red-400 animate-fade-in">
+        <div role="alert" className="mb-4 bg-danger/10 border border-danger/20 rounded-md px-4 py-3 text-sm text-danger animate-fade-in">
           {error}
         </div>
       )}

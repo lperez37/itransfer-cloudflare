@@ -65,14 +65,14 @@ export default function LoginPage() {
 
           {/* Error */}
           {displayError && (
-            <div role="alert" className="mb-6 flex items-center gap-2 bg-danger/10 border border-danger/20 rounded-md px-4 py-3 text-sm text-red-400 animate-fade-in">
+            <div role="alert" className="mb-6 flex items-center gap-2 bg-danger/10 border border-danger/20 rounded-md px-4 py-3 text-sm text-danger animate-fade-in">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
               {displayError}
             </div>
           )}
 
           {/* Form */}
-          {notice && <p role="status" className="mb-6 text-sm text-emerald-400">{notice}</p>}
+          {notice && <p role="status" className="mb-6 text-sm text-success">{notice}</p>}
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label htmlFor="login-email" className="block text-sm font-medium text-text-secondary mb-1.5">

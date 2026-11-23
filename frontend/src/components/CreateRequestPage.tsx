@@ -157,7 +157,7 @@ export default function CreateRequestPage() {
       </div>
 
       {error && (
-        <div className="mb-4 bg-danger/10 border border-danger/20 rounded-md px-4 py-3 text-sm text-red-400 animate-fade-in">
+        <div className="mb-4 bg-danger/10 border border-danger/20 rounded-md px-4 py-3 text-sm text-danger animate-fade-in">
           {error}
         </div>
       )}
@@ -352,7 +352,7 @@ export default function CreateRequestPage() {
               onClick={() => setAllowIncremental(!allowIncremental)}
               className={`relative w-11 h-6 rounded-full transition-colors ${allowIncremental ? "bg-primary" : "bg-surface-lighter"}`}
             >
-              <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${allowIncremental ? "translate-x-5" : ""}`} />
+              <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-text-primary transition-transform ${allowIncremental ? "translate-x-5" : ""}`} />
             </button>
           </div>
         </div>

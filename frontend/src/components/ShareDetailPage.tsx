@@ -6,6 +6,7 @@ import {
   type DownloadLogEntry,
 } from "../lib/api";
 import { downloadFiles } from "../lib/download";
+import ConfirmTransferDeletion from "./ConfirmTransferDeletion";
 import { useWorkspace } from "../context/workspace";
 import {
   ArrowLeft,
@@ -117,14 +118,14 @@ export default function ShareDetailPage() {
   };
 
   const handleDelete = async () => {
-    if (!id) return;
+    if (!id || readOnly || deleting) return;
     setDeleting(true);
     setError(null);
     try {
-      await sharesApi.delete(id);
+      await sharesApi.purge(id);
       navigate("/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete share.");
+      setError(err instanceof Error ? err.message : "Failed to permanently delete share.");
       setDeleting(false);
       setConfirmDelete(false);
     }
@@ -183,14 +184,15 @@ export default function ShareDetailPage() {
           </h1>
           <p className="text-sm text-text-muted mt-1 font-mono break-all">{share.id}</p>
         </div>
-        {isLive && (
-          <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2">
+          {isLive && (
+            <>
             <button
               onClick={handleCopy}
               aria-label="Copy link"
               className="btn-secondary !px-3 sm:!px-4 text-sm flex items-center gap-2"
             >
-              {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+              {copied ? <Check className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
               <span className="hidden sm:inline">{copied ? "Copied!" : "Copy Link"}</span>
             </button>
             <button
@@ -215,21 +217,23 @@ export default function ShareDetailPage() {
               <CalendarPlus className="w-4 h-4" />
               Extend
             </button>
-            <button
-              onClick={() => setConfirmDelete(true)}
-              disabled={readOnly}
-              aria-label="Delete share"
-              className="btn-danger !px-3 text-sm flex items-center"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          </div>
-        )}
+            </>
+          )}
+          <button
+            onClick={() => setConfirmDelete(true)}
+            disabled={readOnly}
+            aria-label="Permanently delete share"
+            title="Delete permanently"
+            className="btn-danger !px-3 text-sm flex items-center"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Hidden notice */}
       {isLive && share.is_paused && (
-        <div className="mb-6 flex items-center gap-2 bg-warning/10 border border-warning/20 rounded-md px-4 py-3 text-sm text-amber-400 animate-fade-in">
+        <div className="mb-6 flex items-center gap-2 bg-warning/10 border border-warning/20 rounded-md px-4 py-3 text-sm text-warning animate-fade-in">
           <EyeOff className="w-4 h-4 flex-shrink-0" />
           This share is hidden. Recipients get "not found" until you unhide it; files are kept.
         </div>
@@ -259,7 +263,7 @@ export default function ShareDetailPage() {
 
       {/* Error */}
       {error && (
-        <div className="mb-4 flex items-center gap-2 bg-danger/10 border border-danger/20 rounded-md px-4 py-3 text-sm text-red-400">
+        <div className="mb-4 flex items-center gap-2 bg-danger/10 border border-danger/20 rounded-md px-4 py-3 text-sm text-danger">
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
           {error}
         </div>
@@ -317,28 +321,13 @@ export default function ShareDetailPage() {
 
       {/* Delete confirmation */}
       {confirmDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="surface rounded-lg p-6 max-w-sm w-full animate-fade-in">
-            <h3 className="text-lg font-semibold text-text-primary mb-2">Delete share?</h3>
-            <p className="text-sm text-text-muted mb-5">
-              "{share.title || "Untitled share"}" will be deleted along with all its files. This
-              cannot be undone.
-            </p>
-            <div className="flex gap-3 justify-end">
-              <button onClick={() => setConfirmDelete(false)} className="btn-secondary text-sm">
-                Cancel
-              </button>
-              <button
-                onClick={handleDelete}
-                disabled={deleting}
-                className="btn-danger text-sm flex items-center gap-2"
-              >
-                {deleting && <Loader2 className="w-4 h-4 animate-spin" />}
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmTransferDeletion
+          title="Permanently delete share?"
+          description={`“${share.title || "Untitled share"}” and all associated files and download history will be permanently deleted.`}
+          progress={deleting ? { completed: 0, total: 1 } : null}
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={handleDelete}
+        />
       )}
 
       {/* Download log */}

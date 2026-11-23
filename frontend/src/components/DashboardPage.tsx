@@ -7,6 +7,7 @@ import {
 } from "../lib/api";
 import { downloadFiles } from "../lib/download";
 import { useWorkspace } from "../context/workspace";
+import ConfirmTransferDeletion from "./ConfirmTransferDeletion";
 import {
   Upload,
   Inbox,
@@ -86,13 +87,13 @@ function isLive(status: ItemStatus): boolean {
 
 function StatusBadge({ status }: { status: ItemStatus }) {
   const config = {
-    active: { bg: "bg-success/15", text: "text-emerald-400", label: "Active" },
-    uploading: { bg: "bg-sky-500/15", text: "text-sky-400 animate-pulse", label: "Uploading…" },
-    hidden: { bg: "bg-violet-500/15", text: "text-violet-400", label: "Hidden" },
-    expired: { bg: "bg-danger/15", text: "text-red-400", label: "Expired" },
+    active: { bg: "bg-success/15", text: "text-success", label: "Active" },
+    uploading: { bg: "bg-info/15", text: "text-info animate-pulse", label: "Uploading…" },
+    hidden: { bg: "bg-primary-light/15", text: "text-primary-light", label: "Hidden" },
+    expired: { bg: "bg-danger/15", text: "text-danger", label: "Expired" },
     exhausted: {
       bg: "bg-warning/15",
-      text: "text-amber-400",
+      text: "text-warning",
       label: "Exhausted",
     },
     deleted: { bg: "bg-surface-lighter/50", text: "text-text-muted", label: "Deleted" },
@@ -148,23 +149,12 @@ export default function DashboardPage() {
   const [requestList, setRequestList] = useState<FileRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
-  const startDeleting = useCallback((id: string) => {
-    setDeletingIds((prev) => new Set(prev).add(id));
-  }, []);
-  const stopDeleting = useCallback((id: string) => {
-    setDeletingIds((prev) => {
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
-  }, []);
-  const [confirmDelete, setConfirmDelete] = useState<{ type: "share" | "request" | "share-purge" | "request-purge"; id: string; title: string } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ type: "share" | "request"; ids: string[]; title?: string } | null>(null);
   const [selectedShares, setSelectedShares] = useState<Set<string>>(new Set());
   const [selectedRequests, setSelectedRequests] = useState<Set<string>>(new Set());
   const [statusFilter, setStatusFilter] = useState<"active" | "expired" | "deleted" | "all">("active");
   const { search } = useOutletContext<{ search: string }>();
-  const [bulkProgress, setBulkProgress] = useState<{ completed: number; total: number; failed: number; running: boolean } | null>(null);
+  const [deleteProgress, setDeleteProgress] = useState<{ completed: number; total: number } | null>(null);
 
   const load = useCallback(async (signal?: { cancelled: boolean }) => {
     setLoading(true);
@@ -193,60 +183,38 @@ export default function DashboardPage() {
     };
   }, [load]);
 
-  const handleDeleteShare = async (id: string) => {
-    startDeleting(id);
-    try {
-      await sharesApi.delete(id);
-      setShareList((prev) => prev.map((s) => s.id === id ? { ...s, is_active: false } : s));
-      return true;
-    } catch {
-      setError("Failed to delete share.");
-      return false;
-    } finally {
-      stopDeleting(id);
+  const permanentlyDelete = async () => {
+    if (!confirmDelete || readOnly || deleteProgress) return;
+    const { type, ids } = confirmDelete;
+    const api = type === "share" ? sharesApi : requestsApi;
+    const removed = new Set<string>();
+    let firstError: string | null = null;
+    setError(null);
+    setDeleteProgress({ completed: 0, total: ids.length });
+    for (const [index, id] of ids.entries()) {
+      try {
+        await api.purge(id);
+        removed.add(id);
+      } catch (err) {
+        firstError ??= err instanceof Error ? err.message : "Please try again.";
+      }
+      setDeleteProgress({ completed: index + 1, total: ids.length });
     }
-  };
-
-  const handleDeleteRequest = async (id: string) => {
-    startDeleting(id);
-    try {
-      await requestsApi.delete(id);
-      setRequestList((prev) => prev.map((r) => r.id === id ? { ...r, is_active: false } : r));
-      return true;
-    } catch {
-      setError("Failed to delete request.");
-      return false;
-    } finally {
-      stopDeleting(id);
+    const keepSelected = (selected: Set<string>) => new Set([...selected].filter((id) => !removed.has(id)));
+    if (type === "share") {
+      setShareList((rows) => rows.filter((row) => !removed.has(row.id)));
+      setSelectedShares(keepSelected);
+    } else {
+      setRequestList((rows) => rows.filter((row) => !removed.has(row.id)));
+      setSelectedRequests(keepSelected);
     }
-  };
-
-  const handlePurgeShare = async (id: string) => {
-    startDeleting(id);
-    try {
-      await sharesApi.purge(id);
-      setShareList((prev) => prev.filter((s) => s.id !== id));
-      return true;
-    } catch {
-      setError("Failed to permanently delete share.");
-      return false;
-    } finally {
-      stopDeleting(id);
+    if (firstError) {
+      const failed = ids.length - removed.size;
+      setError(failed === 1 ? `Could not permanently delete the ${type}. ${firstError}`
+        : `Could not permanently delete ${failed} ${type}s. ${firstError}`);
     }
-  };
-
-  const handlePurgeRequest = async (id: string) => {
-    startDeleting(id);
-    try {
-      await requestsApi.purge(id);
-      setRequestList((prev) => prev.filter((r) => r.id !== id));
-      return true;
-    } catch {
-      setError("Failed to permanently delete request.");
-      return false;
-    } finally {
-      stopDeleting(id);
-    }
+    setConfirmDelete(null);
+    setDeleteProgress(null);
   };
 
   const origin = window.location.origin;
@@ -266,9 +234,6 @@ export default function DashboardPage() {
   const filteredRequests = requestList.filter(
     (r) => matchesFilter(getRequestStatus(r)) && matchesSearch(r.title, r.id)
   );
-  // Bulk actions on history views remove rows for good; on live views they soft-delete.
-  const bulkIsPurge = statusFilter === "deleted" || statusFilter === "expired";
-
   const filterCounts = (statuses: ItemStatus[]) => ({
     all: statuses.length,
     active: statuses.filter((s) => s === "active" || s === "exhausted" || s === "uploading" || s === "hidden").length,
@@ -370,7 +335,7 @@ export default function DashboardPage() {
 
       {/* Error */}
       {error && (
-        <div role="alert" className="mb-4 flex flex-wrap items-center gap-2 bg-danger/10 border border-danger/20 rounded-md px-4 py-3 text-sm text-red-400 animate-fade-in">
+        <div role="alert" className="mb-4 flex flex-wrap items-center gap-2 bg-danger/10 border border-danger/20 rounded-md px-4 py-3 text-sm text-danger animate-fade-in">
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
           {error}
           <button className="btn-secondary text-sm" onClick={() => load()}>Retry</button>
@@ -405,22 +370,13 @@ export default function DashboardPage() {
           {selectedShares.size > 0 && (
             <div className="mb-4 flex flex-wrap items-center gap-3 bg-surface-light rounded-md px-4 py-3 animate-fade-in">
               <span className="text-sm text-text-secondary">{selectedShares.size} selected</span>
-              {bulkIsPurge ? (
-                <button
-                  onClick={() => setConfirmDelete({ type: "share-purge", id: "bulk", title: `${selectedShares.size} shares` })}
-                  className="btn-secondary text-xs !px-3 !py-1.5 flex items-center gap-1.5 text-text-muted"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Remove forever</span>
-                </button>
-              ) : (
-                <button
-                  onClick={() => setConfirmDelete({ type: "share", id: "bulk", title: `${selectedShares.size} shares` })}
-                  className="btn-danger text-xs !px-3 !py-1.5 flex items-center gap-1.5"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              )}
+              <button
+                onClick={() => setConfirmDelete({ type: "share", ids: [...selectedShares] })}
+                className="btn-danger text-xs !px-3 !py-1.5 flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Delete permanently
+              </button>
               <button onClick={() => setSelectedShares(new Set(filteredShares.map(s => s.id)))} className="text-xs text-text-muted hover:text-text-primary">
                 Select all
               </button>
@@ -493,20 +449,7 @@ export default function DashboardPage() {
                 </div>
 
                 <div className="flex items-center gap-2 pt-3 border-t border-border">
-                  {!isLive(getShareStatus(share)) ? (
-                    <button
-                      onClick={() => setConfirmDelete({ type: "share-purge", id: share.id, title: share.title || "Untitled share" })}
-                       disabled={readOnly || deletingIds.has(share.id)}
-                      className="btn-secondary !px-3 !py-1.5 text-xs flex items-center gap-1.5 text-text-muted"
-                    >
-                      {deletingIds.has(share.id) ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <Trash2 className="w-3.5 h-3.5" />
-                      )}
-                      <span>Remove forever</span>
-                    </button>
-                  ) : (
+                  {isLive(getShareStatus(share)) && (
                     <>
                       <CopyButton text={`${origin}/${share.id}`} />
                       {share.file_count > 0 && (
@@ -524,20 +467,17 @@ export default function DashboardPage() {
                           <span>Download</span>
                         </button>
                       )}
-                      <button
-                        onClick={() => setConfirmDelete({ type: "share", id: share.id, title: share.title || "Untitled share" })}
-                        disabled={readOnly || deletingIds.has(share.id)}
-                        aria-label="Delete share"
-                        className="btn-danger !px-3 !py-1.5 text-xs flex items-center gap-1.5 ml-auto"
-                      >
-                        {deletingIds.has(share.id) ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <Trash2 className="w-3.5 h-3.5" />
-                        )}
-                      </button>
                     </>
                   )}
+                  <button
+                    onClick={() => setConfirmDelete({ type: "share", ids: [share.id], title: share.title || "Untitled share" })}
+                    disabled={readOnly}
+                    aria-label="Permanently delete share"
+                    title="Delete permanently"
+                    className="btn-danger !px-3 !py-1.5 ml-auto"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
             ))}
@@ -566,22 +506,13 @@ export default function DashboardPage() {
         {selectedRequests.size > 0 && (
           <div className="mb-4 flex flex-wrap items-center gap-3 bg-surface-light rounded-md px-4 py-3 animate-fade-in">
             <span className="text-sm text-text-secondary">{selectedRequests.size} selected</span>
-            {bulkIsPurge ? (
-              <button
-                onClick={() => setConfirmDelete({ type: "request-purge", id: "bulk", title: `${selectedRequests.size} requests` })}
-                className="btn-secondary text-xs !px-3 !py-1.5 flex items-center gap-1.5 text-text-muted"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Remove forever</span>
-              </button>
-            ) : (
-              <button
-                onClick={() => setConfirmDelete({ type: "request", id: "bulk", title: `${selectedRequests.size} requests` })}
-                className="btn-danger text-xs !px-3 !py-1.5 flex items-center gap-1.5"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            )}
+            <button
+              onClick={() => setConfirmDelete({ type: "request", ids: [...selectedRequests] })}
+              className="btn-danger text-xs !px-3 !py-1.5 flex items-center gap-1.5"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Delete permanently
+            </button>
             <button onClick={() => setSelectedRequests(new Set(filteredRequests.map(r => r.id)))} className="text-xs text-text-muted hover:text-text-primary">
               Select all
             </button>
@@ -638,20 +569,7 @@ export default function DashboardPage() {
               </div>
 
               <div className="flex items-center gap-2 pt-3 border-t border-border">
-                {!isLive(getRequestStatus(req)) ? (
-                  <button
-                    onClick={() => setConfirmDelete({ type: "request-purge", id: req.id, title: req.title })}
-                    disabled={readOnly || deletingIds.has(req.id)}
-                    className="btn-secondary !px-3 !py-1.5 text-xs flex items-center gap-1.5 text-text-muted"
-                  >
-                    {deletingIds.has(req.id) ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Trash2 className="w-3.5 h-3.5" />
-                    )}
-                    <span>Remove forever</span>
-                  </button>
-                ) : (
+                {isLive(getRequestStatus(req)) && (
                   <>
                     <CopyButton text={`${origin}/${req.id}`} />
                     {(req.file_count ?? 0) > 0 && (
@@ -669,20 +587,17 @@ export default function DashboardPage() {
                         <span>Download</span>
                       </button>
                     )}
-                    <button
-                      onClick={() => setConfirmDelete({ type: "request", id: req.id, title: req.title })}
-                      disabled={readOnly || deletingIds.has(req.id)}
-                      aria-label="Delete request"
-                      className="btn-danger !px-3 !py-1.5 text-xs flex items-center gap-1.5 ml-auto"
-                    >
-                      {deletingIds.has(req.id) ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <Trash2 className="w-3.5 h-3.5" />
-                      )}
-                    </button>
                   </>
                 )}
+                <button
+                  onClick={() => setConfirmDelete({ type: "request", ids: [req.id], title: req.title })}
+                  disabled={readOnly}
+                  aria-label="Permanently delete request"
+                  title="Delete permanently"
+                  className="btn-danger !px-3 !py-1.5 ml-auto"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
               </div>
             </div>
           ))}
@@ -690,87 +605,16 @@ export default function DashboardPage() {
         </>
       )}
 
-      {confirmDelete && (() => {
-        const isPurge = confirmDelete.type.endsWith("-purge");
-        const baseType = confirmDelete.type.replace("-purge", "") as "share" | "request";
-        const isBulk = confirmDelete.id === "bulk";
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-            <div className="surface rounded-lg p-6 max-w-sm w-full animate-fade-in">
-              <h3 className="text-lg font-semibold text-text-primary mb-2">
-                {isPurge ? "Permanently remove" : "Delete"} {baseType}?
-              </h3>
-              <p className="text-sm text-text-muted mb-5">
-                {bulkProgress
-                  ? bulkProgress.running
-                    ? `${bulkProgress.completed} of ${bulkProgress.total} processed${bulkProgress.failed ? `, ${bulkProgress.failed} failed` : ""}.`
-                    : bulkProgress.failed
-                      ? `Finished with ${bulkProgress.total - bulkProgress.failed} removed and ${bulkProgress.failed} failed. Failed items remain selected.`
-                      : `All ${bulkProgress.total} items were successfully ${isPurge ? "removed forever" : "deleted"}.`
-                  : isPurge
-                  ? `"${confirmDelete.title}" will be permanently removed from the database. This cannot be undone.`
-                  : `"${confirmDelete.title}" will be deleted along with all its files. This cannot be undone.`}
-              </p>
-              {bulkProgress && (
-                <div className="h-2 rounded-full bg-surface-lighter overflow-hidden mb-5">
-                  <div
-                    className="h-full bg-primary transition-all duration-200"
-                    style={{ width: `${(bulkProgress.completed / bulkProgress.total) * 100}%` }}
-                  />
-                </div>
-              )}
-              <div className="flex gap-3 justify-end">
-                {!bulkProgress?.running && (
-                  <button
-                    onClick={() => {
-                      setConfirmDelete(null);
-                      setBulkProgress(null);
-                    }}
-                    className="btn-secondary text-sm"
-                  >{bulkProgress ? "Close" : "Cancel"}</button>
-                )}
-                {!bulkProgress || bulkProgress.running ? (
-                <button
-                  disabled={bulkProgress?.running}
-                  onClick={async () => {
-                    if (isBulk) {
-                      const ids = [...(baseType === "share" ? selectedShares : selectedRequests)];
-                      const handler = baseType === "share"
-                        ? (isPurge ? handlePurgeShare : handleDeleteShare)
-                        : (isPurge ? handlePurgeRequest : handleDeleteRequest);
-                      const failedIds: string[] = [];
-                      setError(null);
-                      setBulkProgress({ completed: 0, total: ids.length, failed: 0, running: true });
-
-                      for (const [index, id] of ids.entries()) {
-                        if (!await handler(id)) failedIds.push(id);
-                        setBulkProgress({ completed: index + 1, total: ids.length, failed: failedIds.length, running: index + 1 < ids.length });
-                      }
-
-                      const failedSelection = new Set(failedIds);
-                      if (baseType === "share") setSelectedShares(failedSelection);
-                      else setSelectedRequests(failedSelection);
-                      if (failedIds.length) setError(`${failedIds.length} item${failedIds.length === 1 ? "" : "s"} could not be removed.`);
-                    } else {
-                      if (baseType === "share") {
-                        await (isPurge ? handlePurgeShare : handleDeleteShare)(confirmDelete.id);
-                      } else {
-                        await (isPurge ? handlePurgeRequest : handleDeleteRequest)(confirmDelete.id);
-                      }
-                      setConfirmDelete(null);
-                    }
-                  }}
-                  className="btn-danger text-sm flex items-center gap-2"
-                >
-                  {bulkProgress?.running && <Loader2 className="w-4 h-4 animate-spin" />}
-                  {bulkProgress?.running ? "Working..." : isPurge ? "Remove forever" : "Delete"}
-                </button>
-                ) : null}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {confirmDelete && (
+        <ConfirmTransferDeletion
+          title={`Permanently delete ${confirmDelete.type}${confirmDelete.ids.length > 1 ? "s" : ""}?`}
+          description={`${confirmDelete.title ? `“${confirmDelete.title}”` : confirmDelete.ids.length === 1
+            ? `The selected ${confirmDelete.type}` : `${confirmDelete.ids.length} selected ${confirmDelete.type}s`} and all associated files and history will be permanently deleted.`}
+          progress={deleteProgress}
+          onCancel={() => setConfirmDelete(null)}
+          onConfirm={permanentlyDelete}
+        />
+      )}
     </div>
   );
 }

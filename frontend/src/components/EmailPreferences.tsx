@@ -194,7 +194,7 @@ export default function EmailPreferences({
         </p>
       )}
       {error && (
-        <p role="alert" className="text-sm text-red-400">
+        <p role="alert" className="text-sm text-danger">
           {error}
         </p>
       )}
@@ -253,7 +253,7 @@ export default function EmailPreferences({
           {saving ? "Saving preferences..." : "Save email preferences"}
         </button>
         {notice && (
-          <p role="status" className="text-sm text-emerald-400">
+          <p role="status" className="text-sm text-success">
             {notice}
           </p>
         )}

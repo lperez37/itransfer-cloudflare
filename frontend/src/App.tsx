@@ -40,7 +40,7 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
 
   if (loading) {
     return (
-      <div className="min-h-dvh gradient-bg flex items-center justify-center">
+      <div className="min-h-dvh page-bg flex items-center justify-center">
         <Loader2 className="w-8 h-8 text-primary animate-spin" />
       </div>
     );
@@ -56,7 +56,7 @@ function PublicOnlyRoute({ children }: { children: ReactNode }) {
 
   if (loading) {
     return (
-      <div className="min-h-dvh gradient-bg flex items-center justify-center">
+      <div className="min-h-dvh page-bg flex items-center justify-center">
         <Loader2 className="w-8 h-8 text-primary animate-spin" />
       </div>
     );

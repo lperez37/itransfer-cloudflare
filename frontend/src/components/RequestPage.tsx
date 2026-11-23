@@ -212,7 +212,7 @@ export default function RequestPage({
         <div className="surface rounded-lg p-6 sm:p-8">
           {/* Exhausted */}
           {isExhausted && (
-            <div className="flex items-center gap-2 bg-warning/10 border border-warning/20 rounded-md px-4 py-3 text-sm text-amber-400 mb-5">
+            <div className="flex items-center gap-2 bg-warning/10 border border-warning/20 rounded-md px-4 py-3 text-sm text-warning mb-5">
               <ShieldAlert className="w-4 h-4 flex-shrink-0" />
               {t("request.uploadLimit")}
             </div>
@@ -333,7 +333,7 @@ export default function RequestPage({
               </p>
 
               {uploadError && (
-                <div className="mb-4 bg-danger/10 border border-danger/20 rounded-md px-4 py-3 text-sm text-red-400 animate-fade-in">
+                <div className="mb-4 bg-danger/10 border border-danger/20 rounded-md px-4 py-3 text-sm text-danger animate-fade-in">
                   {uploadError}
                 </div>
               )}
