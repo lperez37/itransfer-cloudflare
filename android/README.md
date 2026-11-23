@@ -1,6 +1,6 @@
 # iTransfer for Android
 
-A native Kotlin and Jetpack Compose app for private sideloading. Each tester signs in with their own account on the configured iTransfer server and opens their private workspace.
+The native iTransfer app uses Kotlin and Jetpack Compose. Each APK connects to the iTransfer server chosen at build time. Install the signed APK from your instance administrator, or build one for your own deployment. [Server setup guide](../docs/INSTALLATION.md)
 
 The app remembers sign-in across restarts and APK updates. It encrypts the session with Android Keystore and uses the server’s session lifetime, configured for 90 days in this repository. Signing out or invalidating a session on the server ends that sign-in.
 
@@ -24,9 +24,9 @@ The app can pick several documents, accept shared files and turn shared text int
 
 ## Build locally
 
-Use JDK 17 or later and an Android SDK with platform 36 and Build Tools 35.0.0. Set `ANDROID_HOME` to your SDK directory or configure `sdk.dir` in `local.properties`. Open this directory in Android Studio or run the wrapper from it.
+Use JDK 17 or later and an Android SDK with platform 36 and Build Tools 35.0.0. Set `ANDROID_HOME` to your SDK directory or configure `sdk.dir` in `local.properties`. From the repository root, run `cd android` before using the Gradle commands below. You can also open that directory in Android Studio.
 
-Set your instance in the ignored `itransfer.local` file. Add `publicLinkAliases` if your instance also serves links at other hostnames. The same settings can be passed as Gradle properties `itransfer.serverOrigin` and `itransfer.publicLinkAliases`.
+In that directory, create `itransfer.local` and set `serverOrigin` to your deployment’s HTTPS origin. Add `publicLinkAliases` if your instance also serves links at other hostnames. Git ignores this file. You can also pass these settings as Gradle properties `itransfer.serverOrigin` and `itransfer.publicLinkAliases`.
 
 ```properties
 serverOrigin=https://itransfer.example.test

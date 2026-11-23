@@ -2,9 +2,11 @@
 
 **Last updated:** 2026-11-23
 
-Self-hosted WeTransfer-style file sharing with **private accounts and administrator-managed users**. Share links, file requests, password protection, expiry and download limits run on Cloudflare **Workers** (API + static frontend), **R2** (files) and **D1** (metadata). The application is serverless; optional plain-text account and notification email uses a **separately operated transactional mail service** over HTTPS, not infrastructure included in the Worker deployment.
+iTransfer is a self-hosted file-sharing service with an installable web app and a native Android app. Administrators invite people into private workspaces. Recipients can download files from a share link or upload them to a file request without creating an account.
 
-File bytes never pass through the Worker: the API hands out short-lived presigned R2 URLs and browsers upload/download directly to/from R2. There is **no practical file size limit** from Workers (R2 allows objects up to ~5 TiB), egress is free, and large files use multipart uploads (50 MB parts, 4 concurrent).
+The web app and API run on **Cloudflare Workers**. **D1** stores account and transfer metadata. Files move directly between the device and **R2** using short-lived presigned URLs, with multipart uploads for large files. Optional account and notification emails use a separately operated transactional mail service over HTTPS.
+
+[Deploy your own instance](docs/INSTALLATION.md) · [Build an Android APK for your instance](android/README.md#build-locally)
 
 ![Dashboard](docs/screenshots/dashboard.png)
 
@@ -29,7 +31,8 @@ File bytes never pass through the Worker: the API hands out short-lived presigne
 
 ## Features
 
-- **Web and Android apps** follow the device’s light or dark appearance. A folded paper plane marks outgoing shares and an envelope marks file requests. The web app can be installed from a supported browser. [Android app](android/README.md)
+- **Web and Android apps** follow the device’s light or dark appearance. A folded paper plane marks outgoing shares and an envelope marks file requests. In supported browsers, sign in and choose **Install** on the dashboard.
+- **Android 0.4.1** runs on Android 8.0 and later. At the top of **Shares** or **Requests**, pull down and release to refresh. To select several transfers, press and hold the first one, then tap the others. [Android guide](android/README.md#shares-and-requests)
 - **Shares** - upload files, get a link. Optional title, password, expiry, max downloads.
 - **File requests** - ask others to send you files, with optional password, size limit, upload limit and incremental mode.
 - **Human-friendly URLs** - `your.domain/fox-cat-bear` (3-word animal combos) or random tokens.
@@ -92,7 +95,7 @@ Browser ── /api/* ──────────► Worker (Hono) ──► 
 - Account sessions use opaque cookies backed by hashed tokens in D1, with a **90-day default**. Old HMAC-signed cookies require a fresh login.
 - The browser stretches account passwords with native WebCrypto PBKDF2-SHA256 at **600,000 iterations** into a 256-bit proof. The Worker uses native HKDF + peppered HMAC verification, with **no server-side password KDF for account authentication**. Share/request passwords retain their separate protocol and 3-attempts-per-15-minutes lockout.
 - See [User management and operations](docs/USER-MANAGEMENT.md) for roles, bootstrap, recovery, deployment and security limits.
-- Files >100 MB automatically use S3-style multipart uploads against R2.
+- Files larger than 100 MiB use multipart uploads to R2. The web app uploads up to four 50 MiB parts at a time.
 
 ## Deploy your own
 
@@ -188,6 +191,8 @@ npm run test:ui          # separate Playwright browser suite
 Install root and frontend dependencies first. For the UI suite, install Chromium with `npx playwright install chromium` and provide its platform libraries (on supported Linux distributions, `npx playwright install-deps chromium`). On NixOS, use a Nix-provided Chromium with its runtime dependencies and set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/path/to/chromium` when running `npm run test:ui`. The harness starts Vite unless `UI_BASE_URL` points to an existing test server. These tests do not establish hosted CPU performance. See [backend test details](tests/README.md).
 
 ## Cost
+
+Cloudflare provides free internet egress for files downloaded directly from R2. [R2 pricing](https://developers.cloudflare.com/r2/pricing/)
 
 The cost page is administrator-only and estimates **R2 only**, not the full Cloudflare bill. Workers Free is the required baseline; a paid plan is optional, not necessary by design. The Free plan's **100,000 Worker requests/day** and D1 daily read/write and storage quotas still apply. Quota exhaustion can interrupt service; client-side stretching does not remove request/database usage. The estimate excludes Workers/D1 operation fees, optional paid-plan charges and quota-exhaustion effects, so it is not a guarantee of zero total cost or availability.
 
